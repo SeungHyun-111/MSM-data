@@ -1,0 +1,701 @@
+// // ============================================================
+// //  CONFIG
+// // ============================================================
+// const CONFIG = {
+//   KEY_SS_ID:  '1fJ7kE8nLz-0zXN_4VN51f-GKAV48xonzGRub4Z72D94',
+//   DATA_SS_ID: '1eBJhVbJKqI1gS0t7U9auOWNlLDom_7TeiIYERZ_hpq8',
+
+//   KEY_SHEETS: [
+//     { sheetName: 'SSG', companyName: '신세계쇼핑' },
+//     { sheetName: 'K',   companyName: 'KT알파쇼핑'  },
+//   ],
+
+//   DATA_SHEET:    'DATA2',
+//   CONFIG_SHEET:  'Config',
+//   MAP_SHEET:     'Map',
+//   CONVERT_SHEET: 'Convert',
+
+//   CONFIG_KEY_LAST_DATE:        'lastProcessedDate',
+//   DEFAULT_LAST_PROCESSED_DATE: '2026/04/30',
+
+//   // ── 키시트 읽기 범위 ──────────────────────────
+//   KEY_START_COL: 3,   // C
+//   KEY_COL_COUNT: 12,  // C ~ N
+
+//   // row 인덱스 (0-based, C열=0)
+//   KEY_IDX_WEIGHT:  0,  // C: 가중분
+//   KEY_IDX_DATE:    2,  // E: 방송일자
+//   KEY_IDX_HOUR:    3,  // F: 시
+//   KEY_IDX_MINUTE:  4,  // G: 분
+//   KEY_IDX_BRAND:   7,  // J: 브랜드
+//   KEY_IDX_PRODUCT: 8,  // K: 상품명
+
+//   // ── 결과 범위 (O~R) ───────────────────────────
+//   RESULT_START_COL: 15,  // O
+//   RESULT_COL_COUNT: 4,   // O: 수량 / P: 매출 / Q: STATUS / R: CA/IP
+
+//   // STATUS 값
+//   STATUS_DONE:       'Y',
+//   STATUS_ERROR:      'E',
+//   STATUS_REMAP_DONE: 'R',
+
+//   // CA/IP 값 (SSG 전용, R열)
+//   CAIP_IP: 'IP',
+//   CAIP_CA: 'CA',
+//   SSG_SHEET_NAME: 'SSG',
+
+//   DEBUG_SAMPLE_COUNT: 5,
+//   NEAR_TIME_MINUTES:  3,
+// };
+
+// const CONVERT_HEADERS = [
+//   '브랜드', '맵핑오류', '키상품명', '데이터상품명', '수기입력값',
+// ];
+
+
+// // ============================================================
+// //  메인: 1차 맵핑
+// // ============================================================
+// function mapSalesToKeySheets() {
+//   console.log('================ MAP START ================');
+
+//   const keySS  = SpreadsheetApp.openById(CONFIG.KEY_SS_ID);
+//   const dataSS = SpreadsheetApp.openById(CONFIG.DATA_SS_ID);
+
+//   const configSheet  = getOrCreateSheet_(keySS, CONFIG.CONFIG_SHEET);
+//   const convertSheet = getOrCreateSheet_(keySS, CONFIG.CONVERT_SHEET);
+//   const mapSheet     = keySS.getSheetByName(CONFIG.MAP_SHEET);
+
+//   const lastProcessedDate = getConfigValue_(
+//     configSheet,
+//     CONFIG.CONFIG_KEY_LAST_DATE,
+//     CONFIG.DEFAULT_LAST_PROCESSED_DATE
+//   );
+//   console.log(`[CONFIG] lastProcessedDate=${lastProcessedDate}`);
+
+//   const dataRows = loadDataRows_(dataSS);
+//   const dataMap  = buildDataMap_(dataRows, lastProcessedDate);
+//   const aliasMap = buildAliasMapFromMapSheet_(mapSheet);
+
+//   console.log(`[DATA] 원본 rows=${dataRows.length}`);
+//   console.log(`[DATA] bucket keys=${Object.keys(dataMap).length}`);
+//   logSampleBuckets_(dataMap);
+
+//   let globalMaxProcessedDate = lastProcessedDate;
+
+//   // 1차 실패 목록 수집 (Convert 시트용)
+//   // { brand, errorType, keyProductName, dataProductName }
+//   const failList = [];
+
+//   CONFIG.KEY_SHEETS.forEach(target => {
+//     console.log('--------------------------------------');
+//     console.log(`[${target.sheetName}] 1차 맵핑 시작`);
+
+//     const sheet = keySS.getSheetByName(target.sheetName);
+//     if (!sheet) {
+//       console.log(`[${target.sheetName}] 시트 없음 → skip`);
+//       return;
+//     }
+
+//     const lastRow = sheet.getLastRow();
+//     if (lastRow < 2) return;
+
+//     const rowCount = lastRow - 1;
+
+//     const keyValues    = sheet.getRange(2, CONFIG.KEY_START_COL, rowCount, CONFIG.KEY_COL_COUNT).getValues();
+//     const resultValues = sheet.getRange(2, CONFIG.RESULT_START_COL, rowCount, CONFIG.RESULT_COL_COUNT).getValues();
+
+//     // ── STEP 1: 사전 할당 맵 (AMBIGUOUS 해결) ──
+//     const preAssignMap = buildPreAssignMap_(keyValues, target, dataMap, lastProcessedDate);
+
+//     const output = [];
+
+//     let oldDateSkip = 0, statusSkip = 0, targetCount = 0;
+//     let matchedCount = 0, errorCount = 0;
+//     let noKeywordMatchCount = 0, ambiguousCount = 0, rowErrorCount = 0;
+//     let preAssignCount = 0;
+
+//     const debugSamples = [];
+
+//     keyValues.forEach((row, i) => {
+//       const sheetRow      = i + 2;
+//       const currentQty    = resultValues[i][0];
+//       const currentSales  = resultValues[i][1];
+//       const currentStatus = resultValues[i][2];
+//       const currentCaip   = resultValues[i][3] || '';
+
+//       try {
+//         const keyDate = normalizeKeyDate_(row[CONFIG.KEY_IDX_DATE]);
+
+//         if (!keyDate || keyDate <= lastProcessedDate) {
+//           oldDateSkip++;
+//           output.push([currentQty, currentSales, currentStatus, currentCaip]);
+//           return;
+//         }
+
+//         if (
+//           currentStatus === CONFIG.STATUS_DONE ||
+//           currentStatus === CONFIG.STATUS_REMAP_DONE
+//         ) {
+//           statusSkip++;
+//           output.push([currentQty, currentSales, currentStatus, currentCaip]);
+//           return;
+//         }
+
+//         targetCount++;
+
+//         const hour        = Number(row[CONFIG.KEY_IDX_HOUR]);
+//         const minute      = Number(row[CONFIG.KEY_IDX_MINUTE]);
+//         const brand       = row[CONFIG.KEY_IDX_BRAND];
+//         const productName = row[CONFIG.KEY_IDX_PRODUCT];
+//         const weight      = toNumber_(row[CONFIG.KEY_IDX_WEIGHT]);
+//         const timeText    = normalizeTime_(hour, minute);
+//         const bucketKey   = `${keyDate}|${timeText}|${target.companyName}`;
+//         const candidates  = dataMap[bucketKey] || [];
+
+//         if (keyDate > globalMaxProcessedDate) globalMaxProcessedDate = keyDate;
+
+//         if (debugSamples.length < CONFIG.DEBUG_SAMPLE_COUNT) {
+//           debugSamples.push({ row: sheetRow, date: keyDate, time: timeText, brand, productName, bucketCount: candidates.length });
+//         }
+
+//         // 후보 없음 → 에러
+//         if (candidates.length === 0) {
+//           errorCount++;
+//           output.push([0, 0, CONFIG.STATUS_ERROR, '']);
+//           failList.push({
+//             brand,
+//             errorType: 'NO_CANDIDATE',
+//             keyProductName: productName,
+//             dataProductName: '',
+//           });
+//           console.log(`[${target.sheetName}] row=${sheetRow} NO_CANDIDATE / key=${bucketKey}`);
+//           return;
+//         }
+
+//         // ── 사전 할당 우선 적용 (AMBIGUOUS 해결) ──
+//         if (preAssignMap[i] !== undefined) {
+//           const preRow = preAssignMap[i];
+//           matchedCount++;
+//           preAssignCount++;
+//           output.push([preRow.qty || 0, preRow.salesWon || 0, CONFIG.STATUS_DONE, '']);
+//           return;
+//         }
+
+//         const match = findMatchByBrandThenAlias_(brand, candidates, aliasMap);
+
+//         if (!match.ok) {
+//           errorCount++;
+//           if (match.reason === 'AMBIGUOUS')        ambiguousCount++;
+//           if (match.reason === 'NO_KEYWORD_MATCH') noKeywordMatchCount++;
+
+//           output.push([0, 0, CONFIG.STATUS_ERROR, '']);
+
+//           // Convert 시트용 실패 수집
+//           // 후보가 복수일 경우 각 후보별로 행 분리
+//           if (candidates.length > 1) {
+//             candidates.slice(0, 5).forEach((c, idx) => {
+//               failList.push({
+//                 brand,
+//                 errorType: `${match.reason}[${idx + 1}/${Math.min(candidates.length, 5)}]`,
+//                 keyProductName: productName,
+//                 dataProductName: c.productName,
+//               });
+//             });
+//           } else {
+//             failList.push({
+//               brand,
+//               errorType: match.reason,
+//               keyProductName: productName,
+//               dataProductName: candidates[0]?.productName || '',
+//             });
+//           }
+//           console.log(`[${target.sheetName}] row=${sheetRow} ${match.reason} / brand=${brand}`);
+//           return;
+//         }
+
+//         matchedCount++;
+//         output.push([match.row.qty || 0, match.row.salesWon || 0, CONFIG.STATUS_DONE, '']);
+
+//       } catch (e) {
+//         rowErrorCount++;
+//         errorCount++;
+//         output.push([0, 0, CONFIG.STATUS_ERROR, '']);
+//         console.log(`[${target.sheetName}] row=${sheetRow} ROW_ERROR / ${e.message}`);
+//       }
+//     });
+
+//     // ── 2차 패스: SSG CA/IP 구분 ──
+//     if (target.sheetName === CONFIG.SSG_SHEET_NAME) {
+//       applyCaIpToOutput_(output, keyValues, lastProcessedDate, target.companyName);
+//     }
+
+//     validateOutput_(output, rowCount, CONFIG.RESULT_COL_COUNT, target.sheetName);
+//     sheet.getRange(2, CONFIG.RESULT_START_COL, output.length, CONFIG.RESULT_COL_COUNT).setValues(output);
+
+//     console.log(`[${target.sheetName}] rows=${rowCount}`);
+//     console.log(`[${target.sheetName}] 기준일 이전 skip=${oldDateSkip}`);
+//     console.log(`[${target.sheetName}] 상태값 skip=${statusSkip}`);
+//     console.log(`[${target.sheetName}] 대상=${targetCount}`);
+//     console.log(`[${target.sheetName}] 매핑=${matchedCount} (사전할당=${preAssignCount})`);
+//     console.log(`[${target.sheetName}] 에러=${errorCount}`);
+//     console.log(`[${target.sheetName}] 키워드불일치=${noKeywordMatchCount}`);
+//     console.log(`[${target.sheetName}] 복수매칭=${ambiguousCount}`);
+//     console.log(`[${target.sheetName}] 행오류=${rowErrorCount}`);
+//     console.log(`[${target.sheetName}] 대상 샘플 5건`);
+//     debugSamples.forEach((s, idx) => {
+//       console.log(`  ${idx+1}. row=${s.row} / ${s.date} ${s.time} / brand=${s.brand} / bucket=${s.bucketCount} / product=${s.productName}`);
+//     });
+//   });
+
+//   // ── Convert 시트 생성 (키상품명 기준 중복 제거) ──
+//   buildConvertSheet_(convertSheet, failList);
+
+//   if (globalMaxProcessedDate > lastProcessedDate) {
+//     setConfigValue_(configSheet, CONFIG.CONFIG_KEY_LAST_DATE, globalMaxProcessedDate);
+//     console.log(`[CONFIG] lastProcessedDate 갱신: ${lastProcessedDate} → ${globalMaxProcessedDate}`);
+//   } else {
+//     console.log('[CONFIG] 갱신 없음');
+//   }
+
+//   console.log('================ MAP END ================');
+// }
+
+
+// // ============================================================
+// //  Convert 시트 생성
+// //  키상품명 기준 중복 제거 후 담당자 수기입력 대기 상태로 생성
+// // ============================================================
+// function buildConvertSheet_(convertSheet, failList) {
+//   // 키상품명 + 데이터상품명 조합 기준 중복 제거
+//   const seen = new Set();
+//   const unique = failList.filter(item => {
+//     const key = `${item.keyProductName}|${item.dataProductName}`;
+//     if (seen.has(key)) return false;
+//     seen.add(key);
+//     return true;
+//   });
+
+//   // 시트 초기화
+//   convertSheet.clearContents();
+//   convertSheet.getRange(1, 1, 1, CONVERT_HEADERS.length).setValues([CONVERT_HEADERS]);
+
+//   if (unique.length === 0) {
+//     console.log('[CONVERT] 실패 항목 없음 → 시트 헤더만 유지');
+//     return;
+//   }
+
+//   const rows = unique.map(item => [
+//     item.brand,
+//     item.errorType,
+//     item.keyProductName,
+//     item.dataProductName,
+//     '',  // 수기입력값 (담당자 입력)
+//   ]);
+
+//   convertSheet.getRange(2, 1, rows.length, CONVERT_HEADERS.length).setValues(rows);
+//   console.log(`[CONVERT] 시트 생성=${unique.length}건 (원본 실패=${failList.length}건, 중복제거=${failList.length - unique.length}건)`);
+// }
+
+
+// // ============================================================
+// //  AMBIGUOUS 사전 할당 맵 생성
+// // ============================================================
+// function buildPreAssignMap_(keyValues, target, dataMap, lastProcessedDate) {
+//   const buckets = {};
+
+//   keyValues.forEach((row, i) => {
+//     const keyDate = normalizeKeyDate_(row[CONFIG.KEY_IDX_DATE]);
+//     if (!keyDate || keyDate <= lastProcessedDate) return;
+
+//     const hour      = Number(row[CONFIG.KEY_IDX_HOUR]);
+//     const minute    = Number(row[CONFIG.KEY_IDX_MINUTE]);
+//     const brand     = row[CONFIG.KEY_IDX_BRAND];
+//     const weight    = toNumber_(row[CONFIG.KEY_IDX_WEIGHT]);
+//     const timeText  = normalizeTime_(hour, minute);
+//     const bucketKey = `${keyDate}|${timeText}|${target.companyName}`;
+
+//     if (!buckets[bucketKey]) buckets[bucketKey] = [];
+//     buckets[bucketKey].push({ rowIdx: i, weight, brand });
+//   });
+
+//   const preAssignMap = {};
+
+//   Object.entries(buckets).forEach(([bucketKey, group]) => {
+//     if (group.length !== 2) return;
+
+//     const [g0, g1] = group;
+//     const brandKey = normalizeForIncludes_(g0.brand);
+//     if (brandKey !== normalizeForIncludes_(g1.brand)) return;
+
+//     const candidates = dataMap[bucketKey] || [];
+//     if (candidates.length < 2) return;
+
+//     const matched = candidates.filter(c =>
+//       normalizeForIncludes_(c.productName).includes(brandKey)
+//     );
+//     if (matched.length < 2) return;
+
+//     const salesSorted = matched.slice().sort((a, b) => a.salesWon - b.salesWon);
+//     if (salesSorted[0].salesWon === salesSorted[1].salesWon) {
+//       console.log(`[PRE-ASSIGN] bucketKey=${bucketKey} / 매출 동일 → 구분 불가 (skip)`);
+//       return;
+//     }
+
+//     const weightSorted = group.slice().sort((a, b) => a.weight - b.weight);
+//     preAssignMap[weightSorted[0].rowIdx] = salesSorted[0];
+//     preAssignMap[weightSorted[1].rowIdx] = salesSorted[1];
+
+//     console.log(
+//       `[PRE-ASSIGN] bucketKey=${bucketKey}` +
+//       ` / rowIdx=${weightSorted[0].rowIdx}(w=${weightSorted[0].weight})→매출${salesSorted[0].salesWon}` +
+//       ` / rowIdx=${weightSorted[1].rowIdx}(w=${weightSorted[1].weight})→매출${salesSorted[1].salesWon}`
+//     );
+//   });
+
+//   console.log(`[PRE-ASSIGN] 사전할당 대상 rowIdx=${Object.keys(preAssignMap).length}건`);
+//   return preAssignMap;
+// }
+
+
+// // ============================================================
+// //  CA/IP 구분 - 1차 맵핑용 (output 배열 직접 수정)
+// //  맵핑 성공 여부 관계없이 keyValues 전체 스캔
+// //  동일 날짜|시간 2행이면 무조건 가중분 기준으로 IP/CA 마크
+// // ============================================================
+// function applyCaIpToOutput_(output, keyValues, lastProcessedDate, companyName) {
+//   const bucketGroups = {};
+
+//   keyValues.forEach((row, i) => {
+//     const keyDate = normalizeKeyDate_(row[CONFIG.KEY_IDX_DATE]);
+//     if (!keyDate || keyDate <= lastProcessedDate) return;
+
+//     const hour     = Number(row[CONFIG.KEY_IDX_HOUR]);
+//     const minute   = Number(row[CONFIG.KEY_IDX_MINUTE]);
+//     const weight   = toNumber_(row[CONFIG.KEY_IDX_WEIGHT]);
+//     const timeText = normalizeTime_(hour, minute);
+//     const bucketKey = `${keyDate}|${timeText}|${companyName}`;
+
+//     if (!bucketGroups[bucketKey]) bucketGroups[bucketKey] = [];
+//     bucketGroups[bucketKey].push({ outputIdx: i, weight });
+//   });
+
+//   let caipCount = 0;
+
+//   Object.entries(bucketGroups).forEach(([key, group]) => {
+//     if (group.length !== 2) return;
+
+//     const sorted = group.slice().sort((a, b) => b.weight - a.weight);
+//     output[sorted[0].outputIdx][3] = CONFIG.CAIP_IP;
+//     output[sorted[1].outputIdx][3] = CONFIG.CAIP_CA;
+//     caipCount++;
+
+//     console.log(
+//       `[CA/IP] bucketKey=${key}` +
+//       ` / IP outputIdx=${sorted[0].outputIdx}(w=${sorted[0].weight})` +
+//       ` / CA outputIdx=${sorted[1].outputIdx}(w=${sorted[1].weight})`
+//     );
+//   });
+
+//   console.log(`[CA/IP] 적용 버킷=${caipCount}건`);
+// }
+
+
+// // ============================================================
+// //  브랜드 매칭
+// // ============================================================
+// function findMatchByBrandThenAlias_(brand, candidates, aliasMap) {
+//   const brandKey = normalizeForIncludes_(brand);
+
+//   const brandMatched = candidates.filter(c =>
+//     normalizeForIncludes_(c.productName).includes(brandKey)
+//   );
+
+//   if (brandMatched.length === 1) {
+//     return { ok: true, row: brandMatched[0], reason: 'BRAND_MATCH' };
+//   }
+
+//   if (brandMatched.length > 1) {
+//     return {
+//       ok: false,
+//       reason: 'AMBIGUOUS',
+//       detail: `브랜드 매칭 복수=${brandMatched.length} / 브랜드키=${brand}`,
+//     };
+//   }
+
+//   const aliases = aliasMap[brandKey] || [];
+
+//   const aliasMatched = candidates.filter(c => {
+//     const productText = normalizeForIncludes_(c.productName);
+//     return aliases.some(alias => productText.includes(alias));
+//   });
+
+//   if (aliasMatched.length === 1) {
+//     return { ok: true, row: aliasMatched[0], reason: 'ALIAS_MATCH' };
+//   }
+
+//   if (aliasMatched.length > 1) {
+//     return {
+//       ok: false,
+//       reason: 'AMBIGUOUS',
+//       detail: `Alias 매칭 복수=${aliasMatched.length} / 브랜드=${brand} / aliases=${aliases.join(',')}`,
+//     };
+//   }
+
+//   return {
+//     ok: false,
+//     reason: 'NO_KEYWORD_MATCH',
+//     detail: `키시트 브랜드 "${brand}"가 데이터 후보 상품명에 없음 / aliases=${aliases.join(',') || '없음'}`,
+//   };
+// }
+
+
+// // ============================================================
+// //  데이터 로드 및 맵 생성
+// // ============================================================
+// function loadDataRows_(dataSS) {
+//   const dataSheet = dataSS.getSheetByName(CONFIG.DATA_SHEET);
+//   if (!dataSheet) throw new Error(`데이터시트 없음: ${CONFIG.DATA_SHEET}`);
+
+//   const lastRow = dataSheet.getLastRow();
+//   if (lastRow < 2) return [];
+
+//   return dataSheet.getRange(2, 1, lastRow - 1, 8).getValues();
+// }
+
+// function buildDataMap_(rows, minDate) {
+//   const map = {};
+//   let filteredCount = 0, skippedOldDate = 0, skippedCompany = 0;
+
+//   rows.forEach(row => {
+//     const date = normalizeDataDate_(row[0]);
+
+//     if (!date || date <= minDate) { skippedOldDate++; return; }
+
+//     const company = String(row[3] || '').trim();
+//     if (!['신세계쇼핑', 'KT알파쇼핑'].includes(company)) { skippedCompany++; return; }
+
+//     const time        = normalizeDataTime_(row[1]);
+//     const productName = row[2];
+//     const qty         = toNumber_(row[5]);
+//     const salesWon    = toNumber_(row[7]);
+
+//     filteredCount++;
+
+//     const key = `${date}|${time}|${company}`;
+//     if (!map[key]) map[key] = [];
+//     map[key].push({ productName, qty, salesWon });
+//   });
+
+//   console.log(`[DATA MAP] 기준일 이전 skip=${skippedOldDate}`);
+//   console.log(`[DATA MAP] 회사 제외 skip=${skippedCompany}`);
+//   console.log(`[DATA MAP] 필터 후 rows=${filteredCount}`);
+
+//   return map;
+// }
+
+
+// // ============================================================
+// //  Map 시트 → alias 맵 구성
+// //  컬럼: 브랜드(A) / 수기입력값(B)
+// // ============================================================
+// function buildAliasMapFromMapSheet_(mapSheet) {
+//   const map = {};
+//   if (!mapSheet) {
+//     console.log('[ALIAS] Map 시트 없음 → alias 없이 진행');
+//     return map;
+//   }
+
+//   const lastRow = mapSheet.getLastRow();
+//   if (lastRow < 2) return map;
+
+//   const values = mapSheet.getRange(2, 1, lastRow - 1, 2).getValues();
+
+//   values.forEach(row => {
+//     const brand   = normalizeForIncludes_(row[0]);
+//     const keyword = String(row[1] || '').trim();
+//     if (!brand || !keyword) return;
+
+//     if (!map[brand]) map[brand] = [];
+//     splitManualKeywords_(keyword).forEach(kw => {
+//       const normalized = normalizeForIncludes_(kw);
+//       if (normalized && !map[brand].includes(normalized)) map[brand].push(normalized);
+//     });
+//   });
+
+//   console.log(`[ALIAS] Map 시트 브랜드 수=${Object.keys(map).length}`);
+//   return map;
+// }
+
+
+// // ============================================================
+// //  공통 유틸
+// // ============================================================
+// function normalizeForIncludes_(value) {
+//   return String(value || '')
+//     .toLowerCase()
+//     .replace(/\s+/g, '')
+//     .replace(/[()\[\]{}★♥♡●○◎◇◆□■▷▶◁◀☆*_/.,~!?:;'"`+=％%→＆&|\-]/g, '')
+//     .trim();
+// }
+
+// function splitManualKeywords_(value) {
+//   return String(value || '')
+//     .split(/[,，\/\n]/)
+//     .map(v => v.trim())
+//     .filter(Boolean);
+// }
+
+// function normalizeKeyDate_(value) {
+//   if (value instanceof Date) {
+//     return Utilities.formatDate(value, 'Asia/Seoul', 'yyyy/MM/dd');
+//   }
+//   const text = String(value || '').trim();
+//   if (!text) return '';
+//   if (/^\d{1,2}-\d{1,2}$/.test(text)) {
+//     const [m, d] = text.split('-').map(Number);
+//     return `2026/${pad2_(m)}/${pad2_(d)}`;
+//   }
+//   return text.replace(/-/g, '/');
+// }
+
+// function normalizeDataDate_(value) {
+//   if (value instanceof Date) {
+//     return Utilities.formatDate(value, 'Asia/Seoul', 'yyyy/MM/dd');
+//   }
+//   return String(value || '').trim().replace(/-/g, '/');
+// }
+
+// function normalizeDataTime_(value) {
+//   if (value instanceof Date) {
+//     return Utilities.formatDate(value, 'Asia/Seoul', 'H:mm');
+//   }
+//   const text = String(value || '').trim();
+//   const [h, m] = text.split(':').map(Number);
+//   return `${h}:${pad2_(m || 0)}`;
+// }
+
+// function normalizeTime_(hour, minute) {
+//   const h = Number(hour) === 24 ? 0 : Number(hour);
+//   return `${h}:${pad2_(minute)}`;
+// }
+
+// function timeToMinutes_(timeText) {
+//   const text = String(timeText || '').trim();
+//   if (!/^\d{1,2}:\d{1,2}$/.test(text)) return null;
+//   const [h, m] = text.split(':').map(Number);
+//   if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+//   return h * 60 + m;
+// }
+
+// function toNumber_(value) {
+//   if (typeof value === 'number') return value;
+//   const num = Number(String(value || '').replace(/,/g, '').trim());
+//   return Number.isFinite(num) ? num : 0;
+// }
+
+// function pad2_(n) {
+//   return String(Number(n)).padStart(2, '0');
+// }
+
+// function getOrCreateSheet_(ss, sheetName) {
+//   return ss.getSheetByName(sheetName) || ss.insertSheet(sheetName);
+// }
+
+// function getConfigValue_(sheet, key, defaultValue) {
+//   const lastRow = sheet.getLastRow();
+
+//   if (lastRow < 1) {
+//     sheet.getRange(1, 1, 1, 2).setValues([['key', 'value']]);
+//     sheet.getRange(2, 1, 1, 2).setValues([[key, defaultValue]]);
+//     return defaultValue;
+//   }
+
+//   const values = sheet.getRange(1, 1, lastRow, 2).getValues();
+
+//   for (let i = 0; i < values.length; i++) {
+//     if (String(values[i][0]).trim() === key) {
+//       return normalizeConfigDate_(values[i][1]) || defaultValue;
+//     }
+//   }
+
+//   sheet.getRange(lastRow + 1, 1, 1, 2).setValues([[key, defaultValue]]);
+//   return defaultValue;
+// }
+
+// function setConfigValue_(sheet, key, value) {
+//   const lastRow = sheet.getLastRow();
+//   const values  = sheet.getRange(1, 1, lastRow, 2).getValues();
+
+//   for (let i = 0; i < values.length; i++) {
+//     if (String(values[i][0]).trim() === key) {
+//       sheet.getRange(i + 1, 2).setValue(value);
+//       return;
+//     }
+//   }
+
+//   sheet.getRange(lastRow + 1, 1, 1, 2).setValues([[key, value]]);
+// }
+
+// function normalizeConfigDate_(value) {
+//   if (value instanceof Date) {
+//     return Utilities.formatDate(value, 'Asia/Seoul', 'yyyy/MM/dd');
+//   }
+//   return String(value || '').trim().replace(/-/g, '/');
+// }
+
+// function validateOutput_(output, expectedRows, expectedCols, sheetName) {
+//   if (output.length !== expectedRows) {
+//     throw new Error(`[${sheetName}] output 행 수 불일치: output=${output.length}, expected=${expectedRows}`);
+//   }
+//   output.forEach((row, i) => {
+//     if (!Array.isArray(row) || row.length !== expectedCols) {
+//       throw new Error(`[${sheetName}] output 열 수 불일치: index=${i}, cols=${row.length}`);
+//     }
+//   });
+// }
+
+// function logSampleBuckets_(dataMap) {
+//   console.log('[DATA] bucket 샘플 5건');
+//   Object.entries(dataMap)
+//     .slice(0, CONFIG.DEBUG_SAMPLE_COUNT)
+//     .forEach(([key, arr], idx) => {
+//       console.log(`  ${idx+1}. ${key} / 후보=${arr.length} / ${arr[0]?.productName}`);
+//     });
+// }
+
+// function summarizeCandidates_(candidates) {
+//   if (!candidates || candidates.length === 0) return '';
+//   return candidates
+//     .slice(0, 5)
+//     .map((c, idx) => `${idx+1}) ${c.productName} / 수량=${c.qty} / 매출=${c.salesWon}`)
+//     .join('\n');
+// }
+
+// function findNearTimeCandidates_(dataMap, date, company, timeText) {
+//   const targetMinutes = timeToMinutes_(timeText);
+//   if (targetMinutes === null) return '';
+
+//   const results = [];
+
+//   Object.keys(dataMap).forEach(key => {
+//     const [kDate, kTime, kCompany] = key.split('|');
+//     if (kDate !== date || kCompany !== company) return;
+
+//     const minutes = timeToMinutes_(kTime);
+//     if (minutes === null) return;
+
+//     const diff = Math.abs(minutes - targetMinutes);
+//     if (diff <= CONFIG.NEAR_TIME_MINUTES) {
+//       (dataMap[key] || []).slice(0, 3).forEach(item => {
+//         results.push({ diff, time: kTime, productName: item.productName, qty: item.qty, salesWon: item.salesWon });
+//       });
+//     }
+//   });
+
+//   return results
+//     .sort((a, b) => a.diff - b.diff)
+//     .slice(0, 5)
+//     .map((r, idx) => `${idx+1}) ${r.time} / ±${r.diff}분 / ${r.productName} / 수량=${r.qty} / 매출=${r.salesWon}`)
+//     .join('\n');
+// }

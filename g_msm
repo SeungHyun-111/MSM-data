@@ -1,0 +1,133 @@
+function doGet(e) {
+  let month
+
+  try {
+    month = e.parameter.month // ex) 202605
+
+    if (!month) {
+      return jsonResponse(e, { ok: false, error: 'month parameter required' })
+    }
+
+    const payload = buildMonthlyPayload_(month)
+
+    return jsonResponse(e, {
+      ok: true,
+      payload,
+      firebasePath: `${FIREBASE_MSM_PATH}/${encodeURIComponent(month)}`,
+      counts: countRowsBySheet_(payload.data),
+      updatedAt: payload.updatedAt,
+    })
+  } catch (error) {
+    return jsonResponse(e, {
+      ok: false,
+      error: error.message,
+      month,
+    })
+  }
+}
+
+const FIREBASE_BASE_URL = 'https://schedule-7ec7a-default-rtdb.asia-southeast1.firebasedatabase.app'
+const FIREBASE_MSM_PATH = 'competitorInfo/monthly'
+
+function buildMonthlyPayload_(month) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet()
+  const sheetNames = ['SSG', 'K', 'SK']
+  const result = {}
+
+  sheetNames.forEach(name => {
+    const sheet = ss.getSheetByName(name)
+    if (!sheet) return
+
+    const lastRow = sheet.getLastRow()
+    if (lastRow < 2) {
+      result[name] = []
+      return
+    }
+
+    const data = sheet.getRange(2, 1, lastRow - 1, 18).getValues()
+
+    result[name] = data
+      .filter(row => String(row[0]) === String(month))
+      .map(row => {
+        const originalHour = row[5]
+        const normalizedHour = normalizeHour_(originalHour)
+        const normalizedMinute = normalizeMinute_(row[6])
+
+        return {
+          month:            row[0],
+          week:             row[1],
+          weightedMin:      row[2],
+          org:              row[3],
+          date:             row[4],
+          hour:             normalizedHour,
+          minute:           normalizedMinute,
+          time:             `${normalizedHour}:${pad2_(normalizedMinute)}`,
+          originalHour:     originalHour,
+          originalTime:     `${originalHour}:${pad2_(row[6])}`,
+          simpleMin:        row[7],
+          mdCategory:       row[8],
+          brand:            row[9],
+          productName:      row[10],
+          price:            row[11],
+          company:          row[12],
+          brandWeightedMin: row[13],
+          salesQty:         row[14],
+          revenue:          row[15],
+          errorCode:        row[16],
+          channel:          row[17],
+        }
+      })
+  })
+
+  return {
+    month,
+    updatedAt: new Date().toISOString(),
+    data: result,
+  }
+}
+
+function countRowsBySheet_(data) {
+  const counts = {}
+  Object.keys(data).forEach(name => {
+    counts[name] = data[name].length
+  })
+  return counts
+}
+
+function normalizeHour_(value) {
+  const hour = Number(value)
+  if (!Number.isFinite(hour)) return value
+  return hour === 24 ? 0 : hour
+}
+
+function normalizeMinute_(value) {
+  const minute = Number(value)
+  return Number.isFinite(minute) ? minute : value
+}
+
+function pad2_(value) {
+  const num = Number(value)
+  if (!Number.isFinite(num)) return String(value || '').padStart(2, '0')
+  return String(num).padStart(2, '0')
+}
+
+function jsonResponse(e, obj) {
+  const json = JSON.stringify(obj)
+  const callback = e && e.parameter && e.parameter.callback
+
+  if (callback) {
+    if (!/^[A-Za-z_$][0-9A-Za-z_$]*(\.[A-Za-z_$][0-9A-Za-z_$]*)*$/.test(callback)) {
+      return ContentService
+        .createTextOutput('/* invalid callback */')
+        .setMimeType(ContentService.MimeType.JAVASCRIPT)
+    }
+
+    return ContentService
+      .createTextOutput(`${callback}(${json});`)
+      .setMimeType(ContentService.MimeType.JAVASCRIPT)
+  }
+
+  return ContentService
+    .createTextOutput(json)
+    .setMimeType(ContentService.MimeType.JSON)
+}
