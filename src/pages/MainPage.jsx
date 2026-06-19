@@ -1,14 +1,13 @@
-import { useState } from 'react'
 import './MainPage.css'
 
 const CURRENT_YEAR = new Date().getFullYear()
 const YEARS = [CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1]
 const MONTHS = Array.from({ length: 12 }, (_, index) => index + 1)
 
-export default function MainPage() {
-  const [year, setYear] = useState(CURRENT_YEAR)
-  const [month, setMonth] = useState(new Date().getMonth() + 1)
-  const selectedMonth = `${year}${String(month).padStart(2, '0')}`
+export default function MainPage({ month, onChangeMonth }) {
+  const year = Number(month.slice(0, 4))
+  const monthNumber = Number(month.slice(4, 6))
+  const selectedMonth = `${year}${String(monthNumber).padStart(2, '0')}`
 
   return (
     <main className="main-page">
@@ -22,7 +21,10 @@ export default function MainPage() {
         <div className="month-selectors">
           <label>
             <span>연도</span>
-            <select value={year} onChange={(event) => setYear(Number(event.target.value))}>
+            <select
+              value={year}
+              onChange={(event) => onChangeMonth(`${event.target.value}${String(monthNumber).padStart(2, '0')}`)}
+            >
               {YEARS.map((item) => (
                 <option key={item} value={item}>
                   {item}
@@ -33,7 +35,10 @@ export default function MainPage() {
 
           <label>
             <span>월</span>
-            <select value={month} onChange={(event) => setMonth(Number(event.target.value))}>
+            <select
+              value={monthNumber}
+              onChange={(event) => onChangeMonth(`${year}${String(event.target.value).padStart(2, '0')}`)}
+            >
               {MONTHS.map((item) => (
                 <option key={item} value={item}>
                   {item}

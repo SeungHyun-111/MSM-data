@@ -179,7 +179,7 @@ export default function App() {
         onShowDbStatus={handleShowDbStatus}
       />
       <div className="page-content">
-        {activePage === 'main' && <MainPage />}
+        {activePage === 'main' && <MainPage month={currentMonth} onChangeMonth={setCurrentMonth} />}
         {activePage === 'competitor' && <Dashboard month={currentMonth} data={monthlyData} />}
         {activePage === 'strategy' && <StrategyPage />}
       </div>
