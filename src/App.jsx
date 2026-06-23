@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import DbStatusModal from './components/DbStatusModal'
 import GlobalNav from './components/GlobalNav'
 import RefreshCompetitorModal from './components/RefreshCompetitorModal'
@@ -6,13 +6,30 @@ import Dashboard from './pages/Dashboard'
 import MainPage from './pages/MainPage'
 import StrategyPage from './pages/StrategyPage'
 
-const COMPETITOR_REFRESH_URL = 'https://script.google.com/macros/s/AKfycbx_g4uio1KGQOSB9S6pJ-rIwurCVWRKdnq22McjgAxBav0X9a795ovPYMLDil3amNqV/exec'
+const COMPETITOR_REFRESH_URL = 'https://script.google.com/macros/s/AKfycbzE147wQl7Qiz59QEB-vxEppregg32FbZRCqSHqmaK8_8OiMpPnu-S_znUeyORt59gd/exec'
 const FIREBASE_BASE_URL = 'https://schedule-7ec7a-default-rtdb.asia-southeast1.firebasedatabase.app'
 const FIREBASE_MSM_PATH = 'competitorInfo/monthly'
+const APP_STATE_CACHE_KEY = 'msm:app-state'
 
 function getCurrentMonth() {
   const now = new Date()
   return `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`
+}
+
+function addMonths(month, offset) {
+  const year = Number(month.slice(0, 4))
+  const monthNumber = Number(month.slice(4, 6))
+  const date = new Date(year, monthNumber - 1 + offset, 1)
+  return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}`
+}
+
+function readCachedAppState() {
+  try {
+    return JSON.parse(localStorage.getItem(APP_STATE_CACHE_KEY) || '{}')
+  } catch {
+    localStorage.removeItem(APP_STATE_CACHE_KEY)
+    return {}
+  }
 }
 
 function requestJsonp(baseUrl, params) {
@@ -99,10 +116,17 @@ async function fetchDbStatus() {
 }
 
 export default function App() {
-  const [activePage, setActivePage] = useState('main')
+  const [cachedAppState] = useState(readCachedAppState)
+  const defaultMonth = getCurrentMonth()
+  const [activePage, setActivePage] = useState(cachedAppState.activePage || 'main')
   const [isNavExpanded, setIsNavExpanded] = useState(false)
-  const [currentMonth, setCurrentMonth] = useState(getCurrentMonth)
+  const [competitorMonth, setCompetitorMonth] = useState(
+    cachedAppState.competitorMonth || cachedAppState.currentMonth || addMonths(defaultMonth, -1),
+  )
+  const [strategyMonth, setStrategyMonth] = useState(cachedAppState.strategyMonth || addMonths(defaultMonth, 1))
+  const [scrollPositions, setScrollPositions] = useState(cachedAppState.scrollPositions || {})
   const [monthlyData, setMonthlyData] = useState(null)
+  const [monthlyDataMonth, setMonthlyDataMonth] = useState(null)
   const [isRefreshModalOpen, setIsRefreshModalOpen] = useState(false)
   const [isDbStatusOpen, setIsDbStatusOpen] = useState(false)
   const [isDbStatusLoading, setIsDbStatusLoading] = useState(false)
@@ -110,6 +134,23 @@ export default function App() {
   const [dbStatusMonths, setDbStatusMonths] = useState([])
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [refreshStatus, setRefreshStatus] = useState(null)
+
+  useEffect(() => {
+    localStorage.setItem(
+      APP_STATE_CACHE_KEY,
+      JSON.stringify({ activePage, competitorMonth, strategyMonth, scrollPositions }),
+    )
+  }, [activePage, competitorMonth, strategyMonth, scrollPositions])
+
+  useEffect(() => {
+    const targetScroll = scrollPositions[activePage] || 0
+    window.requestAnimationFrame(() => window.scrollTo({ top: targetScroll, left: 0 }))
+  }, [activePage, scrollPositions])
+
+  const handleNavigate = (nextPage) => {
+    setScrollPositions((current) => ({ ...current, [activePage]: window.scrollY }))
+    setActivePage(nextPage)
+  }
 
   const handleRefreshCompetitorData = async (ym) => {
     setIsRefreshing(true)
@@ -126,8 +167,9 @@ export default function App() {
 
       await saveCompetitorPayloadToFirebase(ym, result.payload)
 
-      setCurrentMonth(ym)
+      setCompetitorMonth(ym)
       setMonthlyData(result.payload.data)
+      setMonthlyDataMonth(ym)
       setRefreshStatus({
         type: 'success',
         month: ym,
@@ -174,14 +216,20 @@ export default function App() {
       <GlobalNav
         activePage={activePage}
         onMenuOpenChange={setIsNavExpanded}
-        onNavigate={setActivePage}
+        onNavigate={handleNavigate}
         onRefreshCompetitorData={() => setIsRefreshModalOpen(true)}
         onShowDbStatus={handleShowDbStatus}
       />
       <div className="page-content">
-        {activePage === 'main' && <MainPage month={currentMonth} onChangeMonth={setCurrentMonth} />}
-        {activePage === 'competitor' && <Dashboard month={currentMonth} data={monthlyData} />}
-        {activePage === 'strategy' && <StrategyPage />}
+        {activePage === 'main' && <MainPage />}
+        {activePage === 'competitor' && (
+          <Dashboard
+            month={competitorMonth}
+            data={monthlyDataMonth === competitorMonth ? monthlyData : null}
+            onChangeMonth={setCompetitorMonth}
+          />
+        )}
+        {activePage === 'strategy' && <StrategyPage month={strategyMonth} onChangeMonth={setStrategyMonth} />}
       </div>
       {isRefreshModalOpen && (
         <RefreshCompetitorModal

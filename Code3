@@ -1,144 +1,151 @@
-// // ============================================================
-// //  디버그: Q=E 행 맵핑 실패 원인 진단 (SSG + K 공통)
-// //  - 데이터 시트에서 후보 조회
-// //  - Map 시트 alias 확인
-// //  - 실패 원인을 콘솔로그로 출력
-// // ============================================================
-// function debugErrorRows() {
-//   console.log('================ DEBUG START ================');
+// ============================================================
+//  디버그: Q=E 행 맵핑 실패 원인 진단 (SSG + K + SK 공통)
+//  - 데이터 시트에서 후보 조회
+//  - Map 시트 alias 확인
+//  - 실패 원인을 콘솔로그로 출력
+// ============================================================
+function debugErrorRows() {
+  console.log('================ DEBUG START ================');
 
-//   const keySS  = SpreadsheetApp.openById(CONFIG.KEY_SS_ID);
-//   const dataSS = SpreadsheetApp.openById(CONFIG.DATA_SS_ID);
+  const keySS  = SpreadsheetApp.openById(CONFIG.KEY_SS_ID);
+  const dataSS = SpreadsheetApp.openById(CONFIG.DATA_SS_ID);
 
-//   const mapSheet = keySS.getSheetByName(CONFIG.MAP_SHEET);
+  const mapSheet = keySS.getSheetByName(CONFIG.MAP_SHEET);
 
-//   // 날짜 제한 없이 전체 데이터 로드
-//   const dataRows = loadDataRows_(dataSS);
-//   const dataMap  = buildDataMap_(dataRows, '1900/01/01');
-//   const aliasMap = buildAliasMapFromMapSheet_(mapSheet);
+  // 날짜 제한 없이 전체 데이터 로드
+  const dataRows = loadDataRows_(dataSS);
+  const dataMap  = buildDataMap_(dataRows, '1900/01/01');
+  const aliasMap = buildAliasMapFromMapSheet_(mapSheet);
 
-//   console.log(`[DEBUG] dataMap bucket 수=${Object.keys(dataMap).length}`);
-//   console.log(`[DEBUG] aliasMap 브랜드 수=${Object.keys(aliasMap).length}`);
+  console.log(`[DEBUG] dataMap bucket 수=${Object.keys(dataMap).length}`);
+  console.log(`[DEBUG] aliasMap 브랜드 수=${Object.keys(aliasMap).length}`);
 
-//   // KEY_SHEETS 전체 순회 (SSG + K)
-//   CONFIG.KEY_SHEETS.forEach(target => {
-//     const sheet = keySS.getSheetByName(target.sheetName);
+  // KEY_SHEETS 전체 순회 (SSG + K + SK)
+  CONFIG.KEY_SHEETS.forEach(target => {
+    const sheet = keySS.getSheetByName(target.sheetName);
 
-//     if (!sheet) {
-//       console.log(`[DEBUG] ${target.sheetName} 시트 없음 → skip`);
-//       return;
-//     }
+    if (!sheet) {
+      console.log(`[DEBUG] ${target.sheetName} 시트 없음 → skip`);
+      return;
+    }
 
-//     const lastRow = sheet.getLastRow();
-//     if (lastRow < 2) {
-//       console.log(`[DEBUG] ${target.sheetName} 데이터 없음 → skip`);
-//       return;
-//     }
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) {
+      console.log(`[DEBUG] ${target.sheetName} 데이터 없음 → skip`);
+      return;
+    }
 
-//     const rowCount     = lastRow - 1;
-//     const keyValues    = sheet.getRange(2, CONFIG.KEY_START_COL, rowCount, CONFIG.KEY_COL_COUNT).getValues();
-//     const resultValues = sheet.getRange(2, CONFIG.RESULT_START_COL, rowCount, CONFIG.RESULT_COL_COUNT).getValues();
+    const rowCount     = lastRow - 1;
+    const keyValues    = sheet.getRange(2, CONFIG.KEY_START_COL, rowCount, CONFIG.KEY_COL_COUNT).getValues();
+    const resultValues = sheet.getRange(2, CONFIG.RESULT_START_COL, rowCount, CONFIG.RESULT_COL_COUNT).getValues();
 
-//     let errorTargetCount = 0;
+    let errorTargetCount = 0;
 
-//     console.log(`======================================`);
-//     console.log(`[DEBUG] ${target.sheetName} (${target.companyName}) 진단 시작`);
+    console.log(`======================================`);
+    console.log(`[DEBUG] ${target.sheetName} (${target.companyName}) 진단 시작`);
 
-//     keyValues.forEach((row, i) => {
-//       const sheetRow = i + 2;
-//       const status   = resultValues[i][2];
+    keyValues.forEach((row, i) => {
+      const sheetRow = i + 2;
+      const status   = resultValues[i][3];
 
-//       if (status !== CONFIG.STATUS_ERROR) return;
+      if (status !== CONFIG.STATUS_ERROR) return;
 
-//       errorTargetCount++;
+      errorTargetCount++;
 
-//       const keyDate     = normalizeKeyDate_(row[CONFIG.KEY_IDX_DATE]);
-//       const hour        = Number(row[CONFIG.KEY_IDX_HOUR]);
-//       const minute      = Number(row[CONFIG.KEY_IDX_MINUTE]);
-//       const brand       = row[CONFIG.KEY_IDX_BRAND];
-//       const productName = row[CONFIG.KEY_IDX_PRODUCT];
-//       const timeText    = normalizeTime_(hour, minute);
-//       const bucketKey   = `${keyDate}|${timeText}|${target.companyName}`;
-//       const candidates  = dataMap[bucketKey] || [];
-//       const brandKey    = normalizeForIncludes_(brand);
-//       const aliases     = aliasMap[brandKey] || [];
+      const keyDate     = normalizeKeyBroadcastDate_(row[CONFIG.KEY_IDX_DATE], row[CONFIG.KEY_IDX_HOUR]);
+      const hour        = Number(row[CONFIG.KEY_IDX_HOUR]);
+      const minute      = Number(row[CONFIG.KEY_IDX_MINUTE]);
+      const brand       = row[CONFIG.KEY_IDX_BRAND];
+      const productName = row[CONFIG.KEY_IDX_PRODUCT];
+      const timeText    = normalizeTime_(hour, minute);
+      const bucketKey   = `${keyDate}|${timeText}|${target.companyName}`;
+      const candidates  = dataMap[bucketKey] || [];
+      const brandKey    = normalizeForIncludes_(brand);
+      const aliases     = aliasMap[brandKey] || [];
 
-//       console.log(`--------------------------------------`);
-//       console.log(`[${target.sheetName} row=${sheetRow}] ${keyDate} ${timeText} / 브랜드="${brand}" / 상품명="${productName}"`);
-//       console.log(`  bucketKey=${bucketKey}`);
+      console.log(`--------------------------------------`);
+      console.log(`[${target.sheetName} row=${sheetRow}] ${keyDate} ${timeText} / 브랜드="${brand}" / 상품명="${productName}"`);
+      console.log(`  bucketKey=${bucketKey}`);
 
-//       // ── 후보 없음 ──
-//       if (candidates.length === 0) {
-//         console.log(`  ❌ NO_CANDIDATE: 데이터 시트에 해당 날짜/시간 후보 없음`);
+      // ── 후보 없음 ──
+      if (candidates.length === 0) {
+        console.log(`  ❌ NO_CANDIDATE: 데이터 시트에 해당 날짜/시간 후보 없음`);
 
-//         const near = findNearTimeCandidates_(dataMap, keyDate, target.companyName, timeText);
-//         if (near) {
-//           console.log(`  📍 근사시간 후보(±${CONFIG.NEAR_TIME_MINUTES}분):`);
-//           near.split('\n').forEach(line => console.log(`    ${line}`));
-//         } else {
-//           console.log(`  📍 근사시간 후보 없음`);
-//         }
-//         return;
-//       }
+        const near = findNearTimeCandidates_(dataMap, keyDate, target.companyName, timeText);
+        if (near) {
+          console.log(`  📍 근사시간 후보(±${CONFIG.NEAR_TIME_MINUTES}분):`);
+          near.split('\n').forEach(line => console.log(`    ${line}`));
+        } else {
+          console.log(`  📍 근사시간 후보 없음`);
+        }
+        return;
+      }
 
-//       console.log(`  후보 ${candidates.length}건:`);
-//       candidates.slice(0, 5).forEach((c, idx) => {
-//         console.log(`    ${idx+1}) "${c.productName}" / 수량=${c.qty} / 매출=${c.salesWon}`);
-//       });
+      console.log(`  후보 ${candidates.length}건:`);
+      candidates.slice(0, 5).forEach((c, idx) => {
+        console.log(`    ${idx+1}) "${c.productName}" / 수량=${c.qty} / 매출=${c.salesWon}`);
+      });
 
-//       // ── 브랜드 직접 매칭 시도 ──
-//       const brandMatched = candidates.filter(c =>
-//         normalizeForIncludes_(c.productName).includes(brandKey)
-//       );
+      // ── 브랜드 직접 매칭 시도 ──
+      const brandMatched = candidates.filter(c =>
+        normalizeForIncludes_(c.productName).includes(brandKey)
+      );
 
-//       if (brandMatched.length === 1) {
-//         console.log(`  ✅ BRAND_MATCH 가능: "${brandMatched[0].productName}" → 근데 왜 E? preAssignMap 또는 상태값 skip 문제일 수 있음`);
-//         return;
-//       }
+      if (brandMatched.length === 1) {
+        console.log(`  ✅ BRAND_MATCH 가능: "${brandMatched[0].productName}" → 근데 왜 E? preAssignMap 또는 상태값 skip 문제일 수 있음`);
+        return;
+      }
 
-//       if (brandMatched.length > 1) {
-//         console.log(`  ❌ AMBIGUOUS: 브랜드 매칭 ${brandMatched.length}건`);
-//         brandMatched.forEach((c, idx) => {
-//           console.log(`    ${idx+1}) "${c.productName}" / 매출=${c.salesWon}`);
-//         });
-//         console.log(`  📌 Map alias: ${aliases.length > 0 ? '[' + aliases.join(', ') + ']' : '없음'}`);
-//         return;
-//       }
+      if (brandMatched.length > 1) {
+        console.log(`  ❌ AMBIGUOUS: 브랜드 매칭 ${brandMatched.length}건`);
+        brandMatched.forEach((c, idx) => {
+          console.log(`    ${idx+1}) "${c.productName}" / 매출=${c.salesWon}`);
+        });
+        console.log(`  📌 Map alias: ${aliases.length > 0 ? '[' + aliases.join(', ') + ']' : '없음'}`);
+        return;
+      }
 
-//       // 브랜드 매칭 0건 → alias 시도
-//       if (aliases.length === 0) {
-//         console.log(`  ❌ NO_KEYWORD_MATCH: 브랜드 "${brand}" 후보 상품명에 없음 / Map alias도 없음`);
-//         console.log(`  💡 Map 시트에 "${brand}" alias 등록 필요`);
-//         return;
-//       }
+      // 브랜드 매칭 0건 → alias 시도
+      if (aliases.length === 0) {
+        console.log(`  ❌ NO_KEYWORD_MATCH: 브랜드 "${brand}" 후보 상품명에 없음 / Map alias도 없음`);
+        console.log(`  💡 Map 시트에 "${brand}" alias 등록 필요`);
+        return;
+      }
 
-//       console.log(`  📌 Map alias: [${aliases.join(', ')}]`);
+      console.log(`  📌 Map alias: [${aliases.join(', ')}]`);
 
-//       const aliasMatched = candidates.filter(c => {
-//         const productText = normalizeForIncludes_(c.productName);
-//         return aliases.some(alias => productText.includes(alias));
-//       });
+      let ambiguousAlias = null;
+      for (const alias of aliases) {
+        const aliasMatched = candidates.filter(c =>
+          normalizeForIncludes_(c.productName).includes(alias)
+        );
 
-//       if (aliasMatched.length === 1) {
-//         console.log(`  ✅ ALIAS_MATCH 가능: "${aliasMatched[0].productName}" → 근데 왜 E? 이전 실행 당시 alias 미등록 상태였을 가능성`);
-//         return;
-//       }
+        if (aliasMatched.length === 1) {
+          console.log(`  ✅ ALIAS_MATCH 가능(alias="${alias}"): "${aliasMatched[0].productName}" → 근데 왜 E? 이전 실행 당시 alias 미등록 상태였을 가능성`);
+          return;
+        }
 
-//       if (aliasMatched.length > 1) {
-//         console.log(`  ❌ AMBIGUOUS: alias 매칭 ${aliasMatched.length}건`);
-//         aliasMatched.forEach((c, idx) => {
-//           console.log(`    ${idx+1}) "${c.productName}" / 매출=${c.salesWon}`);
-//         });
-//         return;
-//       }
+        if (aliasMatched.length > 1) {
+          ambiguousAlias = { alias, rows: aliasMatched };
+          console.log(`  ⚠️ alias="${alias}" 매칭 복수 ${aliasMatched.length}건 → 다음 alias 시도`);
+        }
+      }
 
-//       console.log(`  ❌ NO_KEYWORD_MATCH: 브랜드 "${brand}" 및 alias [${aliases.join(', ')}] 모두 후보 상품명에 없음`);
-//       console.log(`  💡 Map 시트 alias 수정 또는 추가 필요`);
-//     });
+      if (ambiguousAlias) {
+        console.log(`  ❌ AMBIGUOUS: 모든 alias 시도 후에도 단일 매칭 실패 / 마지막 복수 alias="${ambiguousAlias.alias}"`);
+        ambiguousAlias.rows.forEach((c, idx) => {
+          console.log(`    ${idx+1}) "${c.productName}" / 매출=${c.salesWon}`);
+        });
+        return;
+      }
 
-//     console.log(`--------------------------------------`);
-//     console.log(`[DEBUG] ${target.sheetName} 진단 완료 / Q=E 대상=${errorTargetCount}건`);
-//   });
+      console.log(`  ❌ NO_KEYWORD_MATCH: 브랜드 "${brand}" 및 alias [${aliases.join(', ')}] 모두 후보 상품명에 없음`);
+      console.log(`  💡 Map 시트 alias 수정 또는 추가 필요`);
+    });
 
-//   console.log('================ DEBUG END ================');
-// }
+    console.log(`--------------------------------------`);
+    console.log(`[DEBUG] ${target.sheetName} 진단 완료 / Q=E 대상=${errorTargetCount}건`);
+  });
+
+  console.log('================ DEBUG END ================');
+}

@@ -17,9 +17,11 @@ export default function RefreshCompetitorModal({ onClose, onRefresh, isRefreshin
   const [month, setMonth] = useState(new Date().getMonth() + 1)
   const selectedMonth = `${year}${String(month).padStart(2, '0')}`
   const countsText = formatCounts(status?.counts)
+  const isSuccess = status?.type === 'success'
 
   const handleSubmit = (event) => {
     event.preventDefault()
+    if (isSuccess) return
     onRefresh(selectedMonth)
   }
 
@@ -78,9 +80,11 @@ export default function RefreshCompetitorModal({ onClose, onRefresh, isRefreshin
           <button type="button" onClick={onClose} disabled={isRefreshing}>
             닫기
           </button>
-          <button type="submit" disabled={isRefreshing}>
-            {isRefreshing ? '갱신 중' : '갱신하기'}
-          </button>
+          {!isSuccess && (
+            <button type="submit" disabled={isRefreshing}>
+              {isRefreshing ? '갱신 중' : '갱신하기'}
+            </button>
+          )}
         </div>
       </form>
     </div>

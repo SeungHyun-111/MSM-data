@@ -1,291 +1,291 @@
-// // ============================================================
-// //  메인: 2차 맵핑
-// //  순서:
-// //  1. Convert 시트 수기입력값 → Map 시트로 먼저 이전
-// //  2. Map 시트 alias 기반으로 Q=E 행 재매핑
-// //  3. Convert 시트 초기화
-// // ============================================================
-// function remapErrorRows() {
-//   console.log('================ REMAP START ================');
+// ============================================================
+//  메인: 2차 맵핑
+//  순서:
+//  1. Convert 시트 수기입력값 → Map 시트로 먼저 이전
+//  2. Map 시트 alias 기반으로 Q=E 행 재매핑
+//  3. Convert 시트 초기화
+// ============================================================
+function remapErrorRows() {
+  console.log('================ REMAP START ================');
 
-//   const keySS  = SpreadsheetApp.openById(CONFIG.KEY_SS_ID);
-//   const dataSS = SpreadsheetApp.openById(CONFIG.DATA_SS_ID);
+  const keySS  = SpreadsheetApp.openById(CONFIG.KEY_SS_ID);
+  const dataSS = SpreadsheetApp.openById(CONFIG.DATA_SS_ID);
 
-//   const convertSheet = getOrCreateSheet_(keySS, CONFIG.CONVERT_SHEET);
-//   const mapSheet     = getOrCreateSheet_(keySS, CONFIG.MAP_SHEET);
+  const convertSheet = getOrCreateSheet_(keySS, CONFIG.CONVERT_SHEET);
+  const mapSheet     = getOrCreateSheet_(keySS, CONFIG.MAP_SHEET);
 
-//   // ── STEP 1: Convert → Map 이전 (맵핑 전에 먼저 실행) ──
-//   const convertMap = buildConvertMap_(convertSheet);
-//   console.log(`[CONVERT] 수기입력 항목=${Object.keys(convertMap).length / 2}건`);
-//   appendConvertToMapSheet_(mapSheet, convertMap);
+  // ── STEP 1: Convert → Map 이전 (맵핑 전에 먼저 실행) ──
+  const convertMap = buildConvertMap_(convertSheet);
+  console.log(`[CONVERT] 수기입력 항목=${Object.keys(convertMap).length / 2}건`);
+  appendConvertToMapSheet_(mapSheet, convertMap);
 
-//   // ── STEP 2: Map 시트 reload (이전된 항목 포함) ──
-//   const aliasMap = buildAliasMapFromMapSheet_(mapSheet);
-//   console.log(`[MAP] alias 브랜드 수=${Object.keys(aliasMap).length}`);
+  // ── STEP 2: Map 시트 reload (이전된 항목 포함) ──
+  const aliasMap = buildAliasMapFromMapSheet_(mapSheet);
+  console.log(`[MAP] alias 브랜드 수=${Object.keys(aliasMap).length}`);
 
-//   const dataRows = loadDataRows_(dataSS);
-//   const dataMap  = buildDataMap_(dataRows, '1900/01/01');
+  const dataRows = loadDataRows_(dataSS);
+  const dataMap  = buildDataMap_(dataRows, '1900/01/01');
 
-//   // (mapSuccessList 제거 - Map 이전이 앞으로 이동했으므로 불필요)
-//   const mapSuccessList = []; // CA/IP용 brand 추적만 유지
+  // (mapSuccessList 제거 - Map 이전이 앞으로 이동했으므로 불필요)
+  const mapSuccessList = []; // CA/IP용 brand 추적만 유지
 
-//   CONFIG.KEY_SHEETS.forEach(target => {
-//     console.log('--------------------------------------');
-//     console.log(`[${target.sheetName}] 2차 맵핑 시작`);
+  CONFIG.KEY_SHEETS.forEach(target => {
+    console.log('--------------------------------------');
+    console.log(`[${target.sheetName}] 2차 맵핑 시작`);
 
-//     const sheet = keySS.getSheetByName(target.sheetName);
-//     if (!sheet) {
-//       console.log(`[${target.sheetName}] 시트 없음 → skip`);
-//       return;
-//     }
+    const sheet = keySS.getSheetByName(target.sheetName);
+    if (!sheet) {
+      console.log(`[${target.sheetName}] 시트 없음 → skip`);
+      return;
+    }
 
-//     const lastRow = sheet.getLastRow();
-//     if (lastRow < 2) return;
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return;
 
-//     const rowCount = lastRow - 1;
+    const rowCount = lastRow - 1;
 
-//     const keyValues    = sheet.getRange(2, CONFIG.KEY_START_COL, rowCount, CONFIG.KEY_COL_COUNT).getValues();
-//     const resultValues = sheet.getRange(2, CONFIG.RESULT_START_COL, rowCount, CONFIG.RESULT_COL_COUNT).getValues();
+    const keyValues    = sheet.getRange(2, CONFIG.KEY_START_COL, rowCount, CONFIG.KEY_COL_COUNT).getValues();
+    const resultValues = sheet.getRange(2, CONFIG.RESULT_START_COL, rowCount, CONFIG.RESULT_COL_COUNT).getValues();
 
-//     let errorTargetCount = 0, remapSuccessCount = 0;
-//     let retryFailCount = 0, noAliasCount = 0;
+    let errorTargetCount = 0, remapSuccessCount = 0;
+    let retryFailCount = 0, noAliasCount = 0;
 
-//     // sheetRow → { bucketKey, weight } (CA/IP 2차 패스용)
-//     const remapSuccessMap = {};
+    // sheetRow → { bucketKey, weight } (CA/IP 2차 패스용)
+    const remapSuccessMap = {};
 
-//     keyValues.forEach((row, i) => {
-//       const sheetRow = i + 2;
-//       const status   = resultValues[i][2];
+    keyValues.forEach((row, i) => {
+      const sheetRow = i + 2;
+      const status   = resultValues[i][3];
 
-//       if (status !== CONFIG.STATUS_ERROR) return;
+      if (status !== CONFIG.STATUS_ERROR) return;
 
-//       errorTargetCount++;
+      errorTargetCount++;
 
-//       try {
-//         const keyDate      = normalizeKeyDate_(row[CONFIG.KEY_IDX_DATE]);
-//         const originalTime = normalizeTime_(Number(row[CONFIG.KEY_IDX_HOUR]), Number(row[CONFIG.KEY_IDX_MINUTE]));
-//         const brand        = row[CONFIG.KEY_IDX_BRAND];
-//         const productName  = row[CONFIG.KEY_IDX_PRODUCT];
-//         const weight       = toNumber_(row[CONFIG.KEY_IDX_WEIGHT]);
-//         const brandKey     = normalizeForIncludes_(brand);
-//         const aliases      = aliasMap[brandKey] || [];
+      try {
+        const keyDate      = normalizeKeyBroadcastDate_(row[CONFIG.KEY_IDX_DATE], row[CONFIG.KEY_IDX_HOUR]);
+        const originalTime = normalizeTime_(Number(row[CONFIG.KEY_IDX_HOUR]), Number(row[CONFIG.KEY_IDX_MINUTE]));
+        const brand        = row[CONFIG.KEY_IDX_BRAND];
+        const productName  = row[CONFIG.KEY_IDX_PRODUCT];
+        const weight       = toNumber_(row[CONFIG.KEY_IDX_WEIGHT]);
+        const brandKey     = normalizeForIncludes_(brand);
+        const aliases      = aliasMap[brandKey] || [];
 
-//         // Map alias 없으면 skip
-//         if (aliases.length === 0) {
-//           noAliasCount++;
-//           console.log(`[${target.sheetName}] row=${sheetRow} Map alias 없음 / brand=${brand}`);
-//           return;
-//         }
+        // Map alias 없으면 skip
+        if (aliases.length === 0) {
+          noAliasCount++;
+          console.log(`[${target.sheetName}] row=${sheetRow} Map alias 없음 / brand=${brand}`);
+          return;
+        }
 
-//         const bucketKey  = `${keyDate}|${originalTime}|${target.companyName}`;
-//         const candidates = dataMap[bucketKey] || [];
+        const bucketKey  = `${keyDate}|${originalTime}|${target.companyName}`;
+        const candidates = dataMap[bucketKey] || [];
 
-//         if (candidates.length === 0) {
-//           retryFailCount++;
-//           console.log(`[${target.sheetName}] row=${sheetRow} REMAP_NO_CANDIDATE / key=${bucketKey}`);
-//           return;
-//         }
+        if (candidates.length === 0) {
+          retryFailCount++;
+          console.log(`[${target.sheetName}] row=${sheetRow} REMAP_NO_CANDIDATE / key=${bucketKey}`);
+          return;
+        }
 
-//         // Map alias 기반 매칭
-//         const match = findMatchByBrandThenAlias_(brand, candidates, aliasMap);
+        // Map alias 기반 매칭
+        const match = findMatchByBrandThenAlias_(brand, candidates, aliasMap);
 
-//         if (!match.ok) {
-//           retryFailCount++;
-//           console.log(`[${target.sheetName}] row=${sheetRow} ${match.reason} / brand=${brand} / aliases=${aliases.join(',')} / detail=${match.detail}`);
-//           return;
-//         }
+        if (!match.ok) {
+          retryFailCount++;
+          console.log(`[${target.sheetName}] row=${sheetRow} ${match.reason} / brand=${brand} / aliases=${aliases.join(',')} / detail=${match.detail}`);
+          return;
+        }
 
-//         // 성공 → Q=R 기록
-//         sheet
-//           .getRange(sheetRow, CONFIG.RESULT_START_COL, 1, CONFIG.RESULT_COL_COUNT)
-//           .setValues([[match.row.qty || 0, match.row.salesWon || 0, CONFIG.STATUS_REMAP_DONE, '']]);
+        // 성공 → Q=R 기록
+        sheet
+          .getRange(sheetRow, CONFIG.RESULT_START_COL, 1, CONFIG.RESULT_COL_COUNT)
+          .setValues([[match.row.productName || '', match.row.qty || 0, match.row.salesWon || 0, CONFIG.STATUS_REMAP_DONE, '']]);
 
-//         remapSuccessCount++;
-//         remapSuccessMap[sheetRow] = { bucketKey, weight };
+        remapSuccessCount++;
+        remapSuccessMap[sheetRow] = { bucketKey, weight };
 
-//         console.log(`[${target.sheetName}] row=${sheetRow} 재매핑 성공 / brand=${brand} / reason=${match.reason} / aliases=${aliases.join(',')}`);
+        console.log(`[${target.sheetName}] row=${sheetRow} 재매핑 성공 / brand=${brand} / reason=${match.reason} / aliases=${aliases.join(',')}`);
 
-//       } catch (e) {
-//         retryFailCount++;
-//         console.log(`[${target.sheetName}] row=${sheetRow} REMAP_ROW_ERROR / ${e.message}`);
-//       }
-//     });
+      } catch (e) {
+        retryFailCount++;
+        console.log(`[${target.sheetName}] row=${sheetRow} REMAP_ROW_ERROR / ${e.message}`);
+      }
+    });
 
-//     // ── 2차 패스: SSG CA/IP 구분 (재매핑 성공 행) ──
-//     if (target.sheetName === CONFIG.SSG_SHEET_NAME) {
-//       applyRemapCaIp_(sheet, remapSuccessMap);
-//     }
+    // ── 2차 패스: SSG/SK CA/IP 구분 (재매핑 성공 행) ──
+    if (CONFIG.CHANNEL_SHEET_NAMES.includes(target.sheetName)) {
+      applyRemapCaIp_(sheet, remapSuccessMap);
+    }
 
-//     console.log(`[${target.sheetName}] Q=E 대상=${errorTargetCount}`);
-//     console.log(`[${target.sheetName}] 재매핑 성공=${remapSuccessCount}`);
-//     console.log(`[${target.sheetName}] 재시도 실패=${retryFailCount}`);
-//     console.log(`[${target.sheetName}] Map alias 없음=${noAliasCount}`);
-//   });
+    console.log(`[${target.sheetName}] Q=E 대상=${errorTargetCount}`);
+    console.log(`[${target.sheetName}] 재매핑 성공=${remapSuccessCount}`);
+    console.log(`[${target.sheetName}] 재시도 실패=${retryFailCount}`);
+    console.log(`[${target.sheetName}] Map alias 없음=${noAliasCount}`);
+  });
 
-//   // ── Convert 시트 초기화 ──
-//   convertSheet.clearContents();
-//   convertSheet.getRange(1, 1, 1, CONVERT_HEADERS.length).setValues([CONVERT_HEADERS]);
-//   console.log('[CONVERT] 시트 초기화 완료');
+  // ── Convert 시트 초기화 ──
+  convertSheet.clearContents();
+  convertSheet.getRange(1, 1, 1, CONVERT_HEADERS.length).setValues([CONVERT_HEADERS]);
+  console.log('[CONVERT] 시트 초기화 완료');
 
-//   console.log('================ REMAP END ================');
-// }
-
-
-// // ============================================================
-// //  Convert 시트 → 수기입력 맵 구성
-// //  키상품명(C열) → { keyword, manualTime } 형태
-// //  수기입력값(E열)이 있는 행만 포함
-// // ============================================================
-// function buildConvertMap_(convertSheet) {
-//   const map = {};
-//   const lastRow = convertSheet.getLastRow();
-//   if (lastRow < 2) return map;
-
-//   const values = convertSheet.getRange(2, 1, lastRow - 1, CONVERT_HEADERS.length).getValues();
-
-//   values.forEach(row => {
-//     const brand          = String(row[0] || '').trim();  // A: 브랜드
-//     const keyProductName = String(row[2] || '').trim();  // C: 키상품명
-//     const keyword        = String(row[4] || '').trim();  // E: 수기입력값
-//     if (!keyProductName || !keyword) return;
-
-//     // 키상품명 원본 + 정규화 둘 다 등록 (매칭 유연성 확보)
-//     const entry = { brand, keyword, manualTime: '' };
-//     map[keyProductName] = entry;
-//     map[normalizeForIncludes_(keyProductName)] = entry;
-//   });
-
-//   console.log(`[CONVERT MAP] 수기입력 항목=${Object.keys(map).length / 2}건`);
-//   return map;
-// }
+  console.log('================ REMAP END ================');
+}
 
 
-// // ============================================================
-// //  Convert 맵 → Map 시트 이전
-// //  브랜드+키워드 중복 제거 후 append
-// // ============================================================
-// function appendConvertToMapSheet_(mapSheet, convertMap) {
-//   // convertMap 키가 원본+정규화 둘 다 있으므로 원본 기준만 추출
-//   // buildConvertMap_ 에서 원본 keyProductName 기준 entry에 brand 포함시킴
-//   const entries = [];
-//   const seen = new Set();
+// ============================================================
+//  Convert 시트 → 수기입력 맵 구성
+//  키상품명(E열) → { keyword, manualTime } 형태
+//  수기입력값(H열)이 있는 행만 포함
+// ============================================================
+function buildConvertMap_(convertSheet) {
+  const map = {};
+  const lastRow = convertSheet.getLastRow();
+  if (lastRow < 2) return map;
 
-//   Object.values(convertMap).forEach(entry => {
-//     const key = `${normalizeForIncludes_(entry.brand)}|${normalizeForIncludes_(entry.keyword)}`;
-//     if (seen.has(key)) return;
-//     seen.add(key);
-//     entries.push(entry);
-//   });
+  const values = convertSheet.getRange(2, 1, lastRow - 1, CONVERT_HEADERS.length).getValues();
 
-//   if (entries.length === 0) {
-//     console.log('[MAP] Convert에 이전할 항목 없음');
-//     return;
-//   }
+  values.forEach(row => {
+    const brand          = String(row[2] || '').trim();  // C: 브랜드
+    const keyProductName = String(row[4] || '').trim();  // E: 키상품명
+    const keyword        = String(row[7] || '').trim();  // H: 수기입력값
+    if (!keyProductName || !keyword) return;
 
-//   // 기존 Map 시트 읽기 (중복 방지)
-//   const lastRow = mapSheet.getLastRow();
-//   const existingKeys = new Set();
+    // 키상품명 원본 + 정규화 둘 다 등록 (매칭 유연성 확보)
+    const entry = { brand, keyword, manualTime: '' };
+    map[keyProductName] = entry;
+    map[normalizeForIncludes_(keyProductName)] = entry;
+  });
 
-//   if (lastRow >= 2) {
-//     const existing = mapSheet.getRange(2, 1, lastRow - 1, 2).getValues();
-//     existing.forEach(row => {
-//       const brand   = normalizeForIncludes_(row[0]);
-//       const keyword = normalizeForIncludes_(row[1]);
-//       if (brand && keyword) existingKeys.add(`${brand}|${keyword}`);
-//     });
-//   } else if (lastRow === 0) {
-//     mapSheet.getRange(1, 1, 1, 2).setValues([['브랜드', '수기입력값']]);
-//   }
-
-//   const toAppend = [];
-//   entries.forEach(entry => {
-//     const key = `${normalizeForIncludes_(entry.brand)}|${normalizeForIncludes_(entry.keyword)}`;
-//     if (existingKeys.has(key)) return;
-//     existingKeys.add(key);
-//     toAppend.push([entry.brand, entry.keyword]);
-//   });
-
-//   if (toAppend.length === 0) {
-//     console.log('[MAP] 신규 항목 없음 (전부 중복)');
-//     return;
-//   }
-
-//   const appendStartRow = mapSheet.getLastRow() + 1;
-//   mapSheet.getRange(appendStartRow, 1, toAppend.length, 2).setValues(toAppend);
-//   console.log(`[MAP] 신규 추가=${toAppend.length}건`);
-// }
+  console.log(`[CONVERT MAP] 수기입력 항목=${Object.keys(map).length / 2}건`);
+  return map;
+}
 
 
-// // ============================================================
-// //  수기 키워드 매칭
-// // ============================================================
-// function findMatchByManualKeywords_(keywords, candidates) {
-//   const normalizedKeywords = keywords.map(normalizeForIncludes_).filter(Boolean);
+// ============================================================
+//  Convert 맵 → Map 시트 이전
+//  브랜드+키워드 중복 제거 후 append
+// ============================================================
+function appendConvertToMapSheet_(mapSheet, convertMap) {
+  // convertMap 키가 원본+정규화 둘 다 있으므로 원본 기준만 추출
+  // buildConvertMap_ 에서 원본 keyProductName 기준 entry에 brand 포함시킴
+  const entries = [];
+  const seen = new Set();
 
-//   const matched = candidates.filter(c => {
-//     const productText = normalizeForIncludes_(c.productName);
-//     return normalizedKeywords.some(keyword => productText.includes(keyword));
-//   });
+  Object.values(convertMap).forEach(entry => {
+    const key = `${normalizeForIncludes_(entry.brand)}|${normalizeForIncludes_(entry.keyword)}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    entries.push(entry);
+  });
 
-//   if (matched.length === 1) return { ok: true, row: matched[0] };
+  if (entries.length === 0) {
+    console.log('[MAP] Convert에 이전할 항목 없음');
+    return;
+  }
 
-//   if (matched.length > 1) {
-//     return {
-//       ok: false,
-//       reason: 'REMAP_AMBIGUOUS',
-//       detail: `수기키워드 매칭 복수=${matched.length} / keywords=${keywords.join(',')}`,
-//     };
-//   }
+  // 기존 Map 시트 읽기 (중복 방지)
+  const lastRow = mapSheet.getLastRow();
+  const existingKeys = new Set();
 
-//   return {
-//     ok: false,
-//     reason: 'REMAP_NO_KEYWORD_MATCH',
-//     detail: `수기키워드가 후보 상품명에 없음 / keywords=${keywords.join(',')}`,
-//   };
-// }
+  if (lastRow >= 2) {
+    const existing = mapSheet.getRange(2, 1, lastRow - 1, 2).getValues();
+    existing.forEach(row => {
+      const brand   = normalizeForIncludes_(row[0]);
+      const keyword = normalizeForIncludes_(row[1]);
+      if (brand && keyword) existingKeys.add(`${brand}|${keyword}`);
+    });
+  } else if (lastRow === 0) {
+    mapSheet.getRange(1, 1, 1, 2).setValues([['브랜드', '수기입력값']]);
+  }
 
+  const toAppend = [];
+  entries.forEach(entry => {
+    const key = `${normalizeForIncludes_(entry.brand)}|${normalizeForIncludes_(entry.keyword)}`;
+    if (existingKeys.has(key)) return;
+    existingKeys.add(key);
+    toAppend.push([entry.brand, entry.keyword]);
+  });
 
-// // ============================================================
-// //  CA/IP 구분 - 2차 맵핑용 (시트 직접 기록)
-// // ============================================================
-// function applyRemapCaIp_(sheet, remapSuccessMap) {
-//   const bucketGroups = {};
+  if (toAppend.length === 0) {
+    console.log('[MAP] 신규 항목 없음 (전부 중복)');
+    return;
+  }
 
-//   Object.entries(remapSuccessMap).forEach(([sheetRow, meta]) => {
-//     const key = meta.bucketKey;
-//     if (!bucketGroups[key]) bucketGroups[key] = [];
-//     bucketGroups[key].push({ sheetRow: Number(sheetRow), weight: meta.weight });
-//   });
-
-//   let caipCount = 0;
-
-//   Object.entries(bucketGroups).forEach(([key, group]) => {
-//     if (group.length !== 2) return;
-
-//     const sorted = group.slice().sort((a, b) => b.weight - a.weight);
-//     sheet.getRange(sorted[0].sheetRow, CONFIG.RESULT_START_COL + 3).setValue(CONFIG.CAIP_IP);
-//     sheet.getRange(sorted[1].sheetRow, CONFIG.RESULT_START_COL + 3).setValue(CONFIG.CAIP_CA);
-//     caipCount++;
-
-//     console.log(
-//       `[CA/IP REMAP] bucketKey=${key}` +
-//       ` / IP row=${sorted[0].sheetRow}(w=${sorted[0].weight})` +
-//       ` / CA row=${sorted[1].sheetRow}(w=${sorted[1].weight})`
-//     );
-//   });
-
-//   console.log(`[CA/IP REMAP] 적용 버킷=${caipCount}건`);
-// }
+  const appendStartRow = mapSheet.getLastRow() + 1;
+  mapSheet.getRange(appendStartRow, 1, toAppend.length, 2).setValues(toAppend);
+  console.log(`[MAP] 신규 추가=${toAppend.length}건`);
+}
 
 
-// // ============================================================
-// //  normalizeManualTime_ (code2 전용)
-// // ============================================================
-// function normalizeManualTime_(value) {
-//   const text = String(value || '').trim();
-//   if (/^\d{1,2}:\d{1,2}$/.test(text)) {
-//     const [h, m] = text.split(':').map(Number);
-//     return `${h}:${pad2_(m)}`;
-//   }
-//   return normalizeDataTime_(value);
-// }
+// ============================================================
+//  수기 키워드 매칭
+// ============================================================
+function findMatchByManualKeywords_(keywords, candidates) {
+  const normalizedKeywords = keywords.map(normalizeForIncludes_).filter(Boolean);
+
+  const matched = candidates.filter(c => {
+    const productText = normalizeForIncludes_(c.productName);
+    return normalizedKeywords.some(keyword => productText.includes(keyword));
+  });
+
+  if (matched.length === 1) return { ok: true, row: matched[0] };
+
+  if (matched.length > 1) {
+    return {
+      ok: false,
+      reason: 'REMAP_AMBIGUOUS',
+      detail: `수기키워드 매칭 복수=${matched.length} / keywords=${keywords.join(',')}`,
+    };
+  }
+
+  return {
+    ok: false,
+    reason: 'REMAP_NO_KEYWORD_MATCH',
+    detail: `수기키워드가 후보 상품명에 없음 / keywords=${keywords.join(',')}`,
+  };
+}
+
+
+// ============================================================
+//  CA/IP 구분 - 2차 맵핑용 (시트 직접 기록)
+// ============================================================
+function applyRemapCaIp_(sheet, remapSuccessMap) {
+  const bucketGroups = {};
+
+  Object.entries(remapSuccessMap).forEach(([sheetRow, meta]) => {
+    const key = meta.bucketKey;
+    if (!bucketGroups[key]) bucketGroups[key] = [];
+    bucketGroups[key].push({ sheetRow: Number(sheetRow), weight: meta.weight });
+  });
+
+  let caipCount = 0;
+
+  Object.entries(bucketGroups).forEach(([key, group]) => {
+    if (group.length !== 2) return;
+
+    const sorted = group.slice().sort((a, b) => b.weight - a.weight);
+    sheet.getRange(sorted[0].sheetRow, CONFIG.RESULT_START_COL + 4).setValue(CONFIG.CAIP_IP);
+    sheet.getRange(sorted[1].sheetRow, CONFIG.RESULT_START_COL + 4).setValue(CONFIG.CAIP_CA);
+    caipCount++;
+
+    console.log(
+      `[CA/IP REMAP] bucketKey=${key}` +
+      ` / IP row=${sorted[0].sheetRow}(w=${sorted[0].weight})` +
+      ` / CA row=${sorted[1].sheetRow}(w=${sorted[1].weight})`
+    );
+  });
+
+  console.log(`[CA/IP REMAP] 적용 버킷=${caipCount}건`);
+}
+
+
+// ============================================================
+//  normalizeManualTime_ (code2 전용)
+// ============================================================
+function normalizeManualTime_(value) {
+  const text = String(value || '').trim();
+  if (/^\d{1,2}:\d{1,2}$/.test(text)) {
+    const [h, m] = text.split(':').map(Number);
+    return `${h}:${pad2_(m)}`;
+  }
+  return normalizeDataTime_(value);
+}

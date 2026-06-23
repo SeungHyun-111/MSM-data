@@ -3,6 +3,10 @@ import './Dashboard.css'
 
 const FIREBASE_BASE_URL = 'https://schedule-7ec7a-default-rtdb.asia-southeast1.firebasedatabase.app'
 const FIREBASE_MSM_PATH = 'competitorInfo/monthly'
+const VIEW_STATE_CACHE_KEY = 'msm:dashboard-view'
+const CURRENT_YEAR = new Date().getFullYear()
+const YEARS = [CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1]
+const MONTHS = Array.from({ length: 12 }, (_, index) => index + 1)
 const SHEETS = [
   { key: 'SSG', label: 'SSG', accent: '#f4a261' },
   { key: 'K', label: 'K', accent: '#7aa7d9' },
@@ -11,7 +15,7 @@ const SHEETS = [
 const BROADCAST_COLUMNS = [
   { key: 'time', label: '방송일시', width: 170 },
   { key: 'brand', label: '브랜드', width: 150 },
-  { key: 'productName', label: '상품명', width: 740 },
+  { key: 'dataProductName', label: '라방바 상품명', width: 640 },
   { key: 'weight', label: '가중분', width: 100 },
   { key: 'revenue', label: '매출액', width: 170 },
   { key: 'revenuePerMinute', label: '분당 매출액', width: 170 },
@@ -19,6 +23,15 @@ const BROADCAST_COLUMNS = [
 
 function cacheKey(month) {
   return `msm:competitor:${month}`
+}
+
+function readCachedViewState() {
+  try {
+    return JSON.parse(localStorage.getItem(VIEW_STATE_CACHE_KEY) || '{}')
+  } catch {
+    localStorage.removeItem(VIEW_STATE_CACHE_KEY)
+    return {}
+  }
 }
 
 function previousMonth(month) {
@@ -67,10 +80,12 @@ function buildBroadcastsByBrand(rows) {
         hour: row.hour,
         minute: row.minute,
         productName: row.productName,
+        dataProductName: row.dataProductName,
         weight: 0,
         revenue: 0,
       }
 
+    if (!current.dataProductName && row.dataProductName) current.dataProductName = row.dataProductName
     current.weight += getWeight(row)
     current.revenue += getRevenue(row)
     brandRows.set(key, current)
@@ -214,6 +229,11 @@ function getSelectedChannelOrder(selectedCompanyKey) {
   ]
 }
 
+function normalizeSelectedBrands(value) {
+  if (Array.isArray(value)) return value
+  return value ? [value] : []
+}
+
 function getBroadcastSortValue(row, sortKey) {
   if (sortKey === 'time') {
     const date = String(row.date || '').split('T')[0]
@@ -222,7 +242,7 @@ function getBroadcastSortValue(row, sortKey) {
     return `${date} ${hour}:${minute}`
   }
   if (sortKey === 'brand') return String(row.brand || '').toLowerCase()
-  if (sortKey === 'productName') return String(row.productName || '').toLowerCase()
+  if (sortKey === 'dataProductName') return String(row.dataProductName || '').toLowerCase()
   if (sortKey === 'weight') return row.weight
   if (sortKey === 'revenue') return row.revenue
   if (sortKey === 'revenuePerMinute') return row.weight ? row.revenue / row.weight : 0
@@ -258,16 +278,33 @@ function makeTooltipRows(current, previous) {
 
 const emptyStats = { pgmCount: 0, weight: 0, revenue: 0 }
 
-export default function Dashboard({ month, data }) {
+export default function Dashboard({ month, data, onChangeMonth }) {
+  const [cachedViewState] = useState(readCachedViewState)
   const [rawData, setRawData] = useState(data)
   const [previousData, setPreviousData] = useState(null)
-  const [mdCategory, setMdCategory] = useState('ALL')
+  const [mdCategory, setMdCategory] = useState(cachedViewState.mdCategory || 'ALL')
   const [activeTooltip, setActiveTooltip] = useState(null)
-  const [selectedBrand, setSelectedBrand] = useState(null)
-  const [broadcastSort, setBroadcastSort] = useState({ key: 'time', direction: 'asc' })
-  const [broadcastColumnWidths, setBroadcastColumnWidths] = useState(
-    Object.fromEntries(BROADCAST_COLUMNS.map((column) => [column.key, column.width])),
+  const [selectedBrands, setSelectedBrands] = useState(() =>
+    normalizeSelectedBrands(cachedViewState.selectedBrands || cachedViewState.selectedBrand),
   )
+  const [broadcastSort, setBroadcastSort] = useState(
+    cachedViewState.broadcastSort || { key: 'time', direction: 'asc' },
+  )
+  const [broadcastColumnWidths, setBroadcastColumnWidths] = useState(
+    {
+      ...Object.fromEntries(BROADCAST_COLUMNS.map((column) => [column.key, column.width])),
+      ...(cachedViewState.broadcastColumnWidths || {}),
+    },
+  )
+  const selectedYear = Number(month.slice(0, 4))
+  const selectedMonthNumber = Number(month.slice(4, 6))
+
+  useEffect(() => {
+    localStorage.setItem(
+      VIEW_STATE_CACHE_KEY,
+      JSON.stringify({ mdCategory, selectedBrands, broadcastSort, broadcastColumnWidths }),
+    )
+  }, [mdCategory, selectedBrands, broadcastSort, broadcastColumnWidths])
 
   useEffect(() => {
     let ignore = false
@@ -353,18 +390,21 @@ export default function Dashboard({ month, data }) {
 
   const allRows = useMemo(() => Object.values(rawData || {}).flat(), [rawData])
   const mdCategories = useMemo(() => uniqueValues(allRows, 'mdCategory'), [allRows])
-  const analysis = useMemo(() => buildAnalysis(rawData, mdCategory), [rawData, mdCategory])
+  const visibleMdCategory =
+    mdCategory !== 'ALL' && mdCategories.length > 0 && !mdCategories.includes(mdCategory) ? 'ALL' : mdCategory
+
+  const analysis = useMemo(() => buildAnalysis(rawData, visibleMdCategory), [rawData, visibleMdCategory])
   const currentStats = useMemo(
-    () => Object.fromEntries(SHEETS.map(({ key }) => [key, getMonthlyStats(rawData, mdCategory, key)])),
-    [mdCategory, rawData],
+    () => Object.fromEntries(SHEETS.map(({ key }) => [key, getMonthlyStats(rawData, visibleMdCategory, key)])),
+    [visibleMdCategory, rawData],
   )
   const previousStats = useMemo(
-    () => Object.fromEntries(SHEETS.map(({ key }) => [key, getMonthlyStats(previousData, mdCategory, key)])),
-    [mdCategory, previousData],
+    () => Object.fromEntries(SHEETS.map(({ key }) => [key, getMonthlyStats(previousData, visibleMdCategory, key)])),
+    [visibleMdCategory, previousData],
   )
   const previousBrandStats = useMemo(
-    () => Object.fromEntries(SHEETS.map(({ key }) => [key, getBrandStats(previousData, mdCategory, key)])),
-    [mdCategory, previousData],
+    () => Object.fromEntries(SHEETS.map(({ key }) => [key, getBrandStats(previousData, visibleMdCategory, key)])),
+    [visibleMdCategory, previousData],
   )
   const rankedCompanies = useMemo(
     () => analysis.slice().sort((a, b) => b.brandCount - a.brandCount),
@@ -374,17 +414,20 @@ export default function Dashboard({ month, data }) {
     () => Math.max(0, ...analysis.map((company) => company.rows.length)),
     [analysis],
   )
-  const showBrandDetail = mdCategory !== 'ALL'
-  const activeSelectedBrand =
-    selectedBrand?.month === month && selectedBrand?.mdCategory === mdCategory ? selectedBrand : null
-  const selectedCompany = activeSelectedBrand
-    ? analysis.find((company) => company.key === activeSelectedBrand.companyKey)
+  const showBrandDetail = visibleMdCategory !== 'ALL'
+  const activeSelectedBrands = selectedBrands.filter(
+    (item) => item?.month === month && item?.mdCategory === visibleMdCategory,
+  )
+  const primarySelectedBrand = activeSelectedBrands[0] || null
+  const selectedBrandNames = [...new Set(activeSelectedBrands.map((item) => item.brand))]
+  const selectedCompany = primarySelectedBrand
+    ? analysis.find((company) => company.key === primarySelectedBrand.companyKey)
     : null
-  const selectedChannelOrder = activeSelectedBrand ? getSelectedChannelOrder(activeSelectedBrand.companyKey) : []
-  const selectedBroadcastGroups = activeSelectedBrand
+  const selectedChannelOrder = primarySelectedBrand ? getSelectedChannelOrder(primarySelectedBrand.companyKey) : []
+  const selectedBroadcastGroups = primarySelectedBrand
     ? selectedChannelOrder.map((companyKey) => {
         const company = analysis.find((item) => item.key === companyKey)
-        const broadcasts = company?.broadcastsByBrand[activeSelectedBrand.brand] || []
+        const broadcasts = selectedBrandNames.flatMap((brand) => company?.broadcastsByBrand[brand] || [])
 
         return {
           key: companyKey,
@@ -392,7 +435,7 @@ export default function Dashboard({ month, data }) {
           accent: company?.accent || '#6e6e73',
           broadcasts: broadcasts.map((broadcast) => ({
             ...broadcast,
-            key: `${companyKey}-${broadcast.key}`,
+            key: `${companyKey}-${broadcast.brand}-${broadcast.key}`,
           })),
         }
       })
@@ -423,15 +466,27 @@ export default function Dashboard({ month, data }) {
     setActiveTooltip(null)
   }
 
-  const selectBrand = (companyKey, brand) => {
-    setSelectedBrand((current) =>
-      current?.companyKey === companyKey &&
-      current?.brand === brand &&
-      current?.month === month &&
-      current?.mdCategory === mdCategory
-        ? null
-        : { companyKey, brand, month, mdCategory },
-    )
+  const isBrandSelected = (companyKey, brand) =>
+    activeSelectedBrands.some((item) => item.companyKey === companyKey && item.brand === brand)
+
+  const selectBrand = (companyKey, brand, event) => {
+    const nextItem = { companyKey, brand, month, mdCategory: visibleMdCategory }
+    const isMultiSelect = event?.ctrlKey || event?.metaKey
+
+    setSelectedBrands((current) => {
+      const activeItems = normalizeSelectedBrands(current).filter(
+        (item) => item?.month === month && item?.mdCategory === visibleMdCategory,
+      )
+      const exists = activeItems.some((item) => item.companyKey === companyKey && item.brand === brand)
+
+      if (!isMultiSelect) {
+        return exists && activeItems.length === 1 ? [] : [nextItem]
+      }
+
+      return exists
+        ? activeItems.filter((item) => !(item.companyKey === companyKey && item.brand === brand))
+        : [...activeItems, nextItem]
+    })
   }
 
   const sortBroadcasts = (columnKey) => {
@@ -468,12 +523,36 @@ export default function Dashboard({ month, data }) {
         <div className="selector-sheet" aria-label="월 MD분류 선택">
           <div className="selector-values">
             <label>
+              <span>연도</span>
+              <select
+                value={selectedYear}
+                onChange={(event) =>
+                  onChangeMonth(`${event.target.value}${String(selectedMonthNumber).padStart(2, '0')}`)
+                }
+              >
+                {YEARS.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
               <span>월</span>
-              <strong>{month}</strong>
+              <select
+                value={selectedMonthNumber}
+                onChange={(event) => onChangeMonth(`${selectedYear}${String(event.target.value).padStart(2, '0')}`)}
+              >
+                {MONTHS.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
             </label>
             <label>
               <span>MD분류</span>
-              <select value={mdCategory} onChange={(event) => setMdCategory(event.target.value)}>
+              <select value={visibleMdCategory} onChange={(event) => setMdCategory(event.target.value)}>
                 <option value="ALL">전체</option>
                 {mdCategories.map((category) => (
                   <option key={category} value={category}>
@@ -507,8 +586,6 @@ export default function Dashboard({ month, data }) {
 
       <section className="competitor-board" aria-label="브랜드별 편성 현황">
         {analysis.map((company) => {
-          const isCompanySelected = activeSelectedBrand?.companyKey === company.key
-
           return (
           <article className="company-card" key={company.key}>
             <div className="share-strip">
@@ -568,20 +645,19 @@ export default function Dashboard({ month, data }) {
                   <tbody>
                     {company.rows.map((row) => {
                       const previous = previousBrandStats[company.key][row.brand] || emptyStats
+                      const isSelected = isBrandSelected(company.key, row.brand)
 
                       return (
                         <tr
-                          className={`brand-row ${row.isOperated ? '' : 'not-operated'} ${
-                            isCompanySelected && activeSelectedBrand.brand === row.brand ? 'is-selected' : ''
-                          }`}
+                          className={`brand-row ${row.isOperated ? '' : 'not-operated'} ${isSelected ? 'is-selected' : ''}`}
                           key={`${company.key}-${row.brand}`}
                           tabIndex="0"
-                          aria-pressed={isCompanySelected && activeSelectedBrand.brand === row.brand}
-                          onClick={() => selectBrand(company.key, row.brand)}
+                          aria-pressed={isSelected}
+                          onClick={(event) => selectBrand(company.key, row.brand, event)}
                           onKeyDown={(event) => {
                             if (event.key === 'Enter' || event.key === ' ') {
                               event.preventDefault()
-                              selectBrand(company.key, row.brand)
+                              selectBrand(company.key, row.brand, event)
                             }
                           }}
                         >
@@ -633,13 +709,13 @@ export default function Dashboard({ month, data }) {
 
       {showBrandDetail && (
         <section className="broadcast-section" aria-label="선택 브랜드 방송 목록">
-          {!activeSelectedBrand ? (
+          {activeSelectedBrands.length === 0 ? (
             <p className="broadcast-empty">브랜드 행을 클릭하세요</p>
           ) : (
             <>
               <div className="broadcast-summary">
                 <strong>
-                  {selectedCompany?.label} · {activeSelectedBrand.brand}
+                  {selectedCompany?.label} · {selectedBrandNames.join(', ')}
                 </strong>
               </div>
               <table className="broadcast-table">
@@ -679,10 +755,13 @@ export default function Dashboard({ month, data }) {
                   {sortedBroadcastGroups.map((group) => (
                     <Fragment key={group.key}>
                       <tr className="broadcast-channel-row" style={{ '--channel-accent': group.accent }}>
-                        <td colSpan="6">
+                        <td colSpan={BROADCAST_COLUMNS.length}>
                           <div className="broadcast-channel-summary">
                             <strong>{group.label}</strong>
                             <span>{group.broadcasts.length.toLocaleString()}회</span>
+                            <span>
+                              {Math.round(group.broadcasts.reduce((sum, row) => sum + row.weight, 0)).toLocaleString()}분
+                            </span>
                             <span>
                               {formatWon(group.broadcasts.reduce((sum, row) => sum + row.revenue, 0))}
                             </span>
@@ -699,8 +778,8 @@ export default function Dashboard({ month, data }) {
                         group.broadcasts.map((broadcast) => (
                           <tr key={broadcast.key}>
                             <td>{formatBroadcastTime(broadcast)}</td>
-                            <td>{broadcast.brand || activeSelectedBrand.brand}</td>
-                            <td>{broadcast.productName || '-'}</td>
+                            <td>{broadcast.brand || selectedBrandNames.join(', ')}</td>
+                            <td>{broadcast.dataProductName || '-'}</td>
                             <td>{Math.round(broadcast.weight).toLocaleString()}</td>
                             <td>{formatWon(broadcast.revenue)}</td>
                             <td>{formatWonPerMinute(broadcast.revenue, broadcast.weight)}</td>
@@ -708,7 +787,7 @@ export default function Dashboard({ month, data }) {
                         ))
                       ) : (
                         <tr className="not-operated-channel">
-                          <td colSpan="6">미운영</td>
+                          <td colSpan={BROADCAST_COLUMNS.length}>미운영</td>
                         </tr>
                       )}
                     </Fragment>
