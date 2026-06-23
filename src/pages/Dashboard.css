@@ -560,29 +560,32 @@
 .broadcast-table th:nth-child(2),
 .broadcast-table td:nth-child(2),
 .broadcast-table th:nth-child(3),
-.broadcast-table td:nth-child(3) {
+.broadcast-table td:nth-child(3),
+.broadcast-table th:nth-child(4),
+.broadcast-table td:nth-child(4) {
   text-align: left;
 }
 
 .broadcast-table th:nth-child(1) .broadcast-sort-button,
 .broadcast-table th:nth-child(2) .broadcast-sort-button,
-.broadcast-table th:nth-child(3) .broadcast-sort-button {
+.broadcast-table th:nth-child(3) .broadcast-sort-button,
+.broadcast-table th:nth-child(4) .broadcast-sort-button {
   justify-content: flex-start;
   text-align: left;
 }
 
-.broadcast-table th:nth-child(4),
-.broadcast-table td:nth-child(4),
 .broadcast-table th:nth-child(5),
 .broadcast-table td:nth-child(5),
 .broadcast-table th:nth-child(6),
-.broadcast-table td:nth-child(6) {
+.broadcast-table td:nth-child(6),
+.broadcast-table th:nth-child(7),
+.broadcast-table td:nth-child(7) {
   text-align: right;
 }
 
-.broadcast-table th:nth-child(4),
 .broadcast-table th:nth-child(5),
-.broadcast-table th:nth-child(6) {
+.broadcast-table th:nth-child(6),
+.broadcast-table th:nth-child(7) {
   text-align: center;
 }
 

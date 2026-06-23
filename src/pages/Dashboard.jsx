@@ -16,6 +16,7 @@ const SHEETS = [
 ]
 const BROADCAST_COLUMNS = [
   { key: 'time', label: '방송일시', width: 170 },
+  { key: 'channel', label: '채널', width: 90 },
   { key: 'brand', label: '브랜드', width: 150 },
   { key: 'dataProductName', label: '라방바 상품명', width: 640 },
   { key: 'weight', label: '가중분', width: 100 },
@@ -60,6 +61,10 @@ function getPgmKey(row) {
   return [row.date, row.hour, row.minute, row.brand, row.productName].join('|')
 }
 
+function getChannel(row) {
+  return String(row.channel || '').trim()
+}
+
 function getPgmCount(rows) {
   return new Set(rows.map(getPgmKey)).size
 }
@@ -71,7 +76,7 @@ function buildBroadcastsByBrand(rows) {
     const brand = String(row.brand || '').trim()
     if (!brand) return
 
-    const key = getPgmKey(row)
+    const key = [getPgmKey(row), getChannel(row)].join('|')
     const brandRows = map.get(brand) || new Map()
     const current =
       brandRows.get(key) || {
@@ -83,11 +88,13 @@ function buildBroadcastsByBrand(rows) {
         minute: row.minute,
         productName: row.productName,
         dataProductName: row.dataProductName,
+        channel: getChannel(row),
         weight: 0,
         revenue: 0,
       }
 
     if (!current.dataProductName && row.dataProductName) current.dataProductName = row.dataProductName
+    if (!current.channel && getChannel(row)) current.channel = getChannel(row)
     current.weight += getWeight(row)
     current.revenue += getRevenue(row)
     brandRows.set(key, current)
@@ -98,8 +105,8 @@ function buildBroadcastsByBrand(rows) {
     [...map.entries()].map(([brand, rowsByPgm]) => [
       brand,
       [...rowsByPgm.values()].sort((a, b) =>
-        [a.date, a.hour, a.minute, a.productName].join('|').localeCompare(
-          [b.date, b.hour, b.minute, b.productName].join('|'),
+        [a.date, a.hour, a.minute, a.channel, a.productName].join('|').localeCompare(
+          [b.date, b.hour, b.minute, b.channel, b.productName].join('|'),
         ),
       ),
     ]),
@@ -243,6 +250,7 @@ function getBroadcastSortValue(row, sortKey) {
     const minute = String(row.minute ?? '').padStart(2, '0')
     return `${date} ${hour}:${minute}`
   }
+  if (sortKey === 'channel') return getChannel(row).toLowerCase()
   if (sortKey === 'brand') return String(row.brand || '').toLowerCase()
   if (sortKey === 'dataProductName') return String(row.dataProductName || '').toLowerCase()
   if (sortKey === 'weight') return row.weight
@@ -795,6 +803,7 @@ export default function Dashboard({ month, data, onChangeMonth }) {
                         group.broadcasts.map((broadcast) => (
                           <tr key={broadcast.key}>
                             <td>{formatBroadcastTime(broadcast)}</td>
+                            <td>{getChannel(broadcast) || '-'}</td>
                             <td>{broadcast.brand || selectedBrandNames.join(', ')}</td>
                             <td>{broadcast.dataProductName || '-'}</td>
                             <td>{Math.round(broadcast.weight).toLocaleString()}</td>
