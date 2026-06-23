@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react'
 import DbStatusModal from './components/DbStatusModal'
 import GlobalNav from './components/GlobalNav'
+import PrintTeamModal from './components/PrintTeamModal'
 import RefreshCompetitorModal from './components/RefreshCompetitorModal'
 import Dashboard from './pages/Dashboard'
 import MainPage from './pages/MainPage'
 import StrategyPage from './pages/StrategyPage'
 
 const COMPETITOR_REFRESH_URL = 'https://script.google.com/macros/s/AKfycbzE147wQl7Qiz59QEB-vxEppregg32FbZRCqSHqmaK8_8OiMpPnu-S_znUeyORt59gd/exec'
+const STRATEGY_REFRESH_URL = 'https://script.google.com/macros/s/AKfycbwCDcSH4P2Ar2W45_VxuVVQyj0Sa1SzFuVOAMGGFkGp185peKQHmzRKTAbqG0EzYYzb6Q/exec'
 const FIREBASE_BASE_URL = 'https://schedule-7ec7a-default-rtdb.asia-southeast1.firebasedatabase.app'
 const FIREBASE_MSM_PATH = 'competitorInfo/monthly'
+const FIREBASE_STRATEGY_PATH = 'monthlyStrategy'
 const APP_STATE_CACHE_KEY = 'msm:app-state'
 
 function getCurrentMonth() {
@@ -91,19 +94,42 @@ async function saveCompetitorPayloadToFirebase(ym, payload) {
   }
 }
 
-async function fetchDbStatus() {
-  const url = `${FIREBASE_BASE_URL}/${FIREBASE_MSM_PATH}.json`
-  const res = await fetch(url)
+async function saveStrategyPayloadToFirebase(ym, payload) {
+  const url = `${FIREBASE_BASE_URL}/${FIREBASE_STRATEGY_PATH}/${ym}.json`
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
 
   if (!res.ok) {
     const message = await res.text()
-    throw new Error(`Firebase read failed: ${res.status} ${message}`)
+    throw new Error(`Firebase save failed: ${res.status} ${message}`)
+  }
+}
+
+async function fetchDbStatus() {
+  const [competitorRes, strategyRes] = await Promise.all([
+    fetch(`${FIREBASE_BASE_URL}/${FIREBASE_MSM_PATH}.json`),
+    fetch(`${FIREBASE_BASE_URL}/${FIREBASE_STRATEGY_PATH}.json`),
+  ])
+
+  if (!competitorRes.ok) {
+    const message = await competitorRes.text()
+    throw new Error(`Competitor DB read failed: ${competitorRes.status} ${message}`)
   }
 
-  const payload = await res.json()
-  if (!payload) return []
+  if (!strategyRes.ok) {
+    const message = await strategyRes.text()
+    throw new Error(`Strategy DB read failed: ${strategyRes.status} ${message}`)
+  }
 
-  return Object.entries(payload)
+  const competitorPayload = await competitorRes.json()
+  const strategyPayload = await strategyRes.json()
+
+  const competitorMonths = Object.entries(competitorPayload || {})
     .map(([month, item]) => ({
       month,
       updatedAt: item?.updatedAt,
@@ -111,8 +137,28 @@ async function fetchDbStatus() {
         (sum, rows) => sum + (Array.isArray(rows) ? rows.length : 0),
         0,
       ),
+      meta: '방송행',
     }))
     .sort((a, b) => b.month.localeCompare(a.month))
+
+  const strategyMonths = Object.entries(strategyPayload || {})
+    .map(([month, item]) => {
+      const teams = Object.values(item?.teams || {})
+      const requestCount = teams.reduce((sum, team) => sum + (Array.isArray(team?.plans) ? team.plans.length : 0), 0)
+
+      return {
+        month,
+        updatedAt: item?.updatedAt,
+        rowCount: requestCount,
+        meta: `${teams.length}개 조직`,
+      }
+    })
+    .sort((a, b) => b.month.localeCompare(a.month))
+
+  return [
+    { id: 'competitor', title: '경쟁사 편성', rows: competitorMonths },
+    { id: 'strategy', title: '월간전략', rows: strategyMonths },
+  ]
 }
 
 export default function App() {
@@ -128,12 +174,15 @@ export default function App() {
   const [monthlyData, setMonthlyData] = useState(null)
   const [monthlyDataMonth, setMonthlyDataMonth] = useState(null)
   const [isRefreshModalOpen, setIsRefreshModalOpen] = useState(false)
+  const [refreshMode, setRefreshMode] = useState('competitor')
   const [isDbStatusOpen, setIsDbStatusOpen] = useState(false)
+  const [isPrintTeamModalOpen, setIsPrintTeamModalOpen] = useState(false)
   const [isDbStatusLoading, setIsDbStatusLoading] = useState(false)
   const [dbStatusError, setDbStatusError] = useState(null)
-  const [dbStatusMonths, setDbStatusMonths] = useState([])
+  const [dbStatusSections, setDbStatusSections] = useState([])
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [refreshStatus, setRefreshStatus] = useState(null)
+  const [strategyRefreshVersion, setStrategyRefreshVersion] = useState(0)
 
   useEffect(() => {
     localStorage.setItem(
@@ -189,6 +238,41 @@ export default function App() {
     }
   }
 
+  const handleRefreshStrategyData = async (ym) => {
+    setIsRefreshing(true)
+    setRefreshStatus({
+      type: 'loading',
+      month: ym,
+      message: `${ym} 월간전략 데이터를 갱신하고 있습니다.`,
+    })
+
+    try {
+      const result = await requestJsonp(STRATEGY_REFRESH_URL, { month: ym })
+      if (!result?.ok) throw new Error(result?.error || 'Unknown refresh error')
+      if (!result.payload) throw new Error('GAS response has no payload')
+
+      await saveStrategyPayloadToFirebase(ym, result.payload)
+
+      setStrategyMonth(ym)
+      setStrategyRefreshVersion((version) => version + 1)
+      setRefreshStatus({
+        type: 'success',
+        month: ym,
+        message: `${ym} 월간전략 데이터 갱신이 완료되었습니다.`,
+        detail: `Firebase: ${result.firebasePath || `${FIREBASE_STRATEGY_PATH}/${ym}`}`,
+      })
+    } catch (error) {
+      setRefreshStatus({
+        type: 'error',
+        month: ym,
+        message: `${ym} 월간전략 데이터 갱신에 실패했습니다.`,
+        detail: error.message,
+      })
+    } finally {
+      setIsRefreshing(false)
+    }
+  }
+
   const handleCloseRefreshModal = () => {
     if (isRefreshing) return
     setIsRefreshModalOpen(false)
@@ -201,14 +285,34 @@ export default function App() {
     setDbStatusError(null)
 
     try {
-      const months = await fetchDbStatus()
-      setDbStatusMonths(months)
+      const sections = await fetchDbStatus()
+      setDbStatusSections(sections)
     } catch (error) {
-      setDbStatusMonths([])
+      setDbStatusSections([])
       setDbStatusError(error.message)
     } finally {
       setIsDbStatusLoading(false)
     }
+  }
+
+  const handleOpenPrintTeamModal = () => {
+    if (activePage !== 'strategy') {
+      window.alert('월간 편성 전략 페이지에서 PDF 내보내기를 실행해주세요.')
+      return
+    }
+
+    setIsPrintTeamModalOpen(true)
+  }
+
+  const handleExportStrategyPdf = (teamKeys) => {
+    const popup = window.open('', '_blank', 'width=1600,height=1000')
+    if (!popup) {
+      window.alert('팝업이 차단되었습니다. 팝업 허용 후 다시 시도해주세요.')
+      return
+    }
+
+    setIsPrintTeamModalOpen(false)
+    window.dispatchEvent(new CustomEvent('msm:export-strategy-pdf', { detail: { popup, teamKeys } }))
   }
 
   return (
@@ -217,7 +321,15 @@ export default function App() {
         activePage={activePage}
         onMenuOpenChange={setIsNavExpanded}
         onNavigate={handleNavigate}
-        onRefreshCompetitorData={() => setIsRefreshModalOpen(true)}
+        onRefreshCompetitorData={() => {
+          setRefreshMode('competitor')
+          setIsRefreshModalOpen(true)
+        }}
+        onRefreshStrategyData={() => {
+          setRefreshMode('strategy')
+          setIsRefreshModalOpen(true)
+        }}
+        onExportPdf={handleOpenPrintTeamModal}
         onShowDbStatus={handleShowDbStatus}
       />
       <div className="page-content">
@@ -229,21 +341,35 @@ export default function App() {
             onChangeMonth={setCompetitorMonth}
           />
         )}
-        {activePage === 'strategy' && <StrategyPage month={strategyMonth} onChangeMonth={setStrategyMonth} />}
+        {activePage === 'strategy' && (
+          <StrategyPage
+            month={strategyMonth}
+            refreshVersion={strategyRefreshVersion}
+            onChangeMonth={setStrategyMonth}
+          />
+        )}
       </div>
       {isRefreshModalOpen && (
         <RefreshCompetitorModal
+          defaultMonth={refreshMode === 'strategy' ? strategyMonth : competitorMonth}
           isRefreshing={isRefreshing}
           status={refreshStatus}
+          title={refreshMode === 'strategy' ? '월간전략 데이터 갱신' : '경쟁사 데이터 갱신'}
           onClose={handleCloseRefreshModal}
-          onRefresh={handleRefreshCompetitorData}
+          onRefresh={refreshMode === 'strategy' ? handleRefreshStrategyData : handleRefreshCompetitorData}
+        />
+      )}
+      {isPrintTeamModalOpen && (
+        <PrintTeamModal
+          onClose={() => setIsPrintTeamModalOpen(false)}
+          onExport={handleExportStrategyPdf}
         />
       )}
       {isDbStatusOpen && (
         <DbStatusModal
           error={dbStatusError}
           isLoading={isDbStatusLoading}
-          months={dbStatusMonths}
+          sections={dbStatusSections}
           onClose={() => setIsDbStatusOpen(false)}
         />
       )}

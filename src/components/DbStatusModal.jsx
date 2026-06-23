@@ -13,7 +13,9 @@ function formatDateTime(value) {
   }).format(date)
 }
 
-export default function DbStatusModal({ error, isLoading, months, onClose }) {
+export default function DbStatusModal({ error, isLoading, sections, onClose }) {
+  const hasRows = sections.some((section) => section.rows.length > 0)
+
   return (
     <div className="modal-backdrop" role="presentation">
       <section className="db-status-modal" aria-modal="true" role="dialog">
@@ -39,31 +41,44 @@ export default function DbStatusModal({ error, isLoading, months, onClose }) {
             </div>
           )}
 
-          {!isLoading && !error && months.length === 0 && (
+          {!isLoading && !error && !hasRows && (
             <div className="db-status-state">
               <strong>저장된 월 데이터가 없습니다.</strong>
             </div>
           )}
 
-          {!isLoading && !error && months.length > 0 && (
-            <table className="db-status-table">
-              <thead>
-                <tr>
-                  <th>월</th>
-                  <th>갱신일자</th>
-                  <th>건수</th>
-                </tr>
-              </thead>
-              <tbody>
-                {months.map((item) => (
-                  <tr key={item.month}>
-                    <td>{item.month}</td>
-                    <td>{formatDateTime(item.updatedAt)}</td>
-                    <td>{item.rowCount.toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          {!isLoading && !error && hasRows && (
+            <div className="db-status-sections">
+              {sections.map((section) => (
+                <section className="db-status-section" key={section.id}>
+                  <h3>{section.title}</h3>
+                  {section.rows.length === 0 ? (
+                    <div className="db-status-empty">저장된 데이터가 없습니다.</div>
+                  ) : (
+                    <table className="db-status-table">
+                      <thead>
+                        <tr>
+                          <th>월</th>
+                          <th>갱신일자</th>
+                          <th>건수</th>
+                          <th>구분</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {section.rows.map((item) => (
+                          <tr key={`${section.id}-${item.month}`}>
+                            <td>{item.month}</td>
+                            <td>{formatDateTime(item.updatedAt)}</td>
+                            <td>{item.rowCount.toLocaleString()}</td>
+                            <td>{item.meta}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </section>
+              ))}
+            </div>
           )}
         </div>
       </section>

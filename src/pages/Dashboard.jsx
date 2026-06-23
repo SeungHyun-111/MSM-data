@@ -1,5 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import './Dashboard.css'
+import { openSectionWindow } from '../utils/openSectionWindow'
+import { MD_CATEGORY_ORDER, sortByConfiguredOrder } from '../constants/competitorDropdownOrder'
 
 const FIREBASE_BASE_URL = 'https://schedule-7ec7a-default-rtdb.asia-southeast1.firebasedatabase.app'
 const FIREBASE_MSM_PATH = 'competitorInfo/monthly'
@@ -389,7 +391,10 @@ export default function Dashboard({ month, data, onChangeMonth }) {
   }, [month])
 
   const allRows = useMemo(() => Object.values(rawData || {}).flat(), [rawData])
-  const mdCategories = useMemo(() => uniqueValues(allRows, 'mdCategory'), [allRows])
+  const mdCategories = useMemo(
+    () => sortByConfiguredOrder(uniqueValues(allRows, 'mdCategory'), MD_CATEGORY_ORDER),
+    [allRows],
+  )
   const visibleMdCategory =
     mdCategory !== 'ALL' && mdCategories.length > 0 && !mdCategories.includes(mdCategory) ? 'ALL' : mdCategory
 
@@ -587,7 +592,12 @@ export default function Dashboard({ month, data, onChangeMonth }) {
       <section className="competitor-board" aria-label="브랜드별 편성 현황">
         {analysis.map((company) => {
           return (
-          <article className="company-card" key={company.key}>
+          <article
+            className="company-card"
+            key={company.key}
+            onContextMenu={(event) => openSectionWindow(event, `${month} ${company.label}`)}
+            title="우클릭하면 새창으로 열립니다"
+          >
             <div className="share-strip">
               <span>편성비중</span>
               <strong>{company.share.toFixed(1)}%</strong>
@@ -708,7 +718,14 @@ export default function Dashboard({ month, data, onChangeMonth }) {
       </section>
 
       {showBrandDetail && (
-        <section className="broadcast-section" aria-label="선택 브랜드 방송 목록">
+        <section
+          className="broadcast-section"
+          aria-label="선택 브랜드 방송 목록"
+          onContextMenu={(event) =>
+            openSectionWindow(event, `${month} ${selectedCompany?.label || ''} ${selectedBrandNames.join(', ')}`)
+          }
+          title="우클릭하면 새창으로 열립니다"
+        >
           {activeSelectedBrands.length === 0 ? (
             <p className="broadcast-empty">브랜드 행을 클릭하세요</p>
           ) : (

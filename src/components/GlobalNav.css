@@ -23,11 +23,13 @@
   display: flex;
   align-items: stretch;
   justify-content: center;
+  gap: 8px;
 }
 
 .nav-link {
-  min-width: 132px;
-  padding: 0 18px;
+  position: relative;
+  min-width: 0;
+  padding: 0 14px;
   border: 0;
   background: transparent;
   color: rgba(29, 29, 31, 0.82);
@@ -39,6 +41,21 @@
 .nav-link:hover,
 .nav-link.is-active {
   color: #000;
+}
+
+.nav-link.is-active {
+  font-weight: 800;
+}
+
+.nav-link.is-active::after {
+  content: '';
+  position: absolute;
+  left: 22px;
+  right: 22px;
+  bottom: 0;
+  height: 3px;
+  border-radius: 999px 999px 0 0;
+  background: #000;
 }
 
 .mega-menu {
@@ -53,7 +70,7 @@
 }
 
 .global-nav.is-menu-open .mega-menu {
-  height: 82px;
+  height: 96px;
   opacity: 1;
 }
 
@@ -91,12 +108,12 @@
 
 @media (max-width: 720px) {
   .nav-link {
-    min-width: 116px;
-    padding: 0 14px;
+    min-width: 0;
+    padding: 0 10px;
     font-size: 12px;
   }
 
   .global-nav.is-menu-open .mega-menu {
-    height: 82px;
+    height: 108px;
   }
 }

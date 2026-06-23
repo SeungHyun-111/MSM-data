@@ -6,25 +6,30 @@ const menuItems = [
   { id: 'competitor', label: '경쟁사 편성' },
   { id: 'strategy', label: '월간 편성 전략' },
   { id: 'settings', label: '설정' },
+  { id: 'print', label: '인쇄' },
 ]
 
 export default function GlobalNav({
   activePage,
+  onExportPdf,
   onMenuOpenChange,
   onNavigate,
   onRefreshCompetitorData,
+  onRefreshStrategyData,
   onShowDbStatus,
 }) {
   const [activeMenu, setActiveMenu] = useState(null)
   const isSettingsOpen = activeMenu === 'settings'
+  const isPrintOpen = activeMenu === 'print'
+  const isMenuOpen = isSettingsOpen || isPrintOpen
 
   useEffect(() => {
-    onMenuOpenChange(isSettingsOpen)
-  }, [isSettingsOpen, onMenuOpenChange])
+    onMenuOpenChange(isMenuOpen)
+  }, [isMenuOpen, onMenuOpenChange])
 
   return (
     <header
-      className={`global-nav ${isSettingsOpen ? 'is-menu-open' : ''}`}
+      className={`global-nav ${isMenuOpen ? 'is-menu-open' : ''}`}
       onMouseLeave={() => setActiveMenu(null)}
     >
       <nav className="nav-bar" aria-label="Primary navigation">
@@ -35,9 +40,9 @@ export default function GlobalNav({
               type="button"
               className={`nav-link ${activePage === item.id ? 'is-active' : ''}`}
               onClick={() => {
-                if (item.id !== 'settings') onNavigate(item.id)
+                if (!['settings', 'print'].includes(item.id)) onNavigate(item.id)
               }}
-              onMouseEnter={() => setActiveMenu(item.id === 'settings' ? item.id : null)}
+              onMouseEnter={() => setActiveMenu(['settings', 'print'].includes(item.id) ? item.id : null)}
             >
               {item.label}
             </button>
@@ -50,10 +55,20 @@ export default function GlobalNav({
           {isSettingsOpen && (
             <div className="settings-menu">
               <button type="button" onClick={onRefreshCompetitorData}>
-                경쟁사 자료 갱신
+                경쟁사 데이터 갱신
+              </button>
+              <button type="button" onClick={onRefreshStrategyData}>
+                월간전략 데이터 갱신
               </button>
               <button type="button" onClick={onShowDbStatus}>
                 DB 현황
+              </button>
+            </div>
+          )}
+          {isPrintOpen && (
+            <div className="settings-menu">
+              <button type="button" onClick={onExportPdf}>
+                인쇄/PDF
               </button>
             </div>
           )}
