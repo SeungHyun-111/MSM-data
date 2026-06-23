@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import './Dashboard.css'
 
 const FIREBASE_BASE_URL = 'https://schedule-7ec7a-default-rtdb.asia-southeast1.firebasedatabase.app'
@@ -7,6 +7,14 @@ const SHEETS = [
   { key: 'SSG', label: 'SSG', accent: '#f4a261' },
   { key: 'K', label: 'K', accent: '#7aa7d9' },
   { key: 'SK', label: 'SK스토아', accent: '#e98b8b' },
+]
+const BROADCAST_COLUMNS = [
+  { key: 'time', label: '방송일시', width: 170 },
+  { key: 'brand', label: '브랜드', width: 150 },
+  { key: 'productName', label: '상품명', width: 740 },
+  { key: 'weight', label: '가중분', width: 100 },
+  { key: 'revenue', label: '매출액', width: 170 },
+  { key: 'revenuePerMinute', label: '분당 매출액', width: 170 },
 ]
 
 function cacheKey(month) {
@@ -39,6 +47,46 @@ function getPgmKey(row) {
 
 function getPgmCount(rows) {
   return new Set(rows.map(getPgmKey)).size
+}
+
+function buildBroadcastsByBrand(rows) {
+  const map = new Map()
+
+  rows.forEach((row) => {
+    const brand = String(row.brand || '').trim()
+    if (!brand) return
+
+    const key = getPgmKey(row)
+    const brandRows = map.get(brand) || new Map()
+    const current =
+      brandRows.get(key) || {
+        key,
+        brand,
+        month: row.month,
+        date: row.date,
+        hour: row.hour,
+        minute: row.minute,
+        productName: row.productName,
+        weight: 0,
+        revenue: 0,
+      }
+
+    current.weight += getWeight(row)
+    current.revenue += getRevenue(row)
+    brandRows.set(key, current)
+    map.set(brand, brandRows)
+  })
+
+  return Object.fromEntries(
+    [...map.entries()].map(([brand, rowsByPgm]) => [
+      brand,
+      [...rowsByPgm.values()].sort((a, b) =>
+        [a.date, a.hour, a.minute, a.productName].join('|').localeCompare(
+          [b.date, b.hour, b.minute, b.productName].join('|'),
+        ),
+      ),
+    ]),
+  )
 }
 
 function uniqueValues(rows, key) {
@@ -92,6 +140,7 @@ function buildAnalysis(data, mdCategory) {
       share: monthlyWeight ? (selectedWeight / monthlyWeight) * 100 : 0,
       brandCount: rows.length,
       operatedCount,
+      broadcastsByBrand: buildBroadcastsByBrand(selectedRowsBySheet[sheet.key]),
     }
   })
 }
@@ -135,6 +184,51 @@ function formatMoneyDelta(value) {
   return `${rounded > 0 ? '+' : ''}${rounded.toLocaleString()}백만`
 }
 
+function formatWon(value) {
+  return `${Math.round(value).toLocaleString()}원`
+}
+
+function formatWonPerMinute(revenue, minutes) {
+  if (!minutes) return '-'
+  return `${Math.round(revenue / minutes).toLocaleString()}원/분`
+}
+
+function formatBroadcastTime(row) {
+  const weekdays = ['일', '월', '화', '수', '목', '금', '토']
+  const rawDate = String(row.date || '')
+  const datePart = rawDate.split('T')[0]
+  const parsedDate = datePart ? new Date(`${datePart}T00:00:00`) : null
+  const weekday =
+    parsedDate && !Number.isNaN(parsedDate.getTime()) ? `(${weekdays[parsedDate.getDay()]})` : ''
+  const time =
+    row.hour !== undefined && row.minute !== undefined
+      ? `${String(row.hour).padStart(2, '0')}:${String(row.minute).padStart(2, '0')}`
+      : ''
+  return [datePart, weekday, time].filter(Boolean).join(' ')
+}
+
+function getSelectedChannelOrder(selectedCompanyKey) {
+  return [
+    selectedCompanyKey,
+    ...SHEETS.map((sheet) => sheet.key).filter((key) => key !== selectedCompanyKey),
+  ]
+}
+
+function getBroadcastSortValue(row, sortKey) {
+  if (sortKey === 'time') {
+    const date = String(row.date || '').split('T')[0]
+    const hour = String(row.hour ?? '').padStart(2, '0')
+    const minute = String(row.minute ?? '').padStart(2, '0')
+    return `${date} ${hour}:${minute}`
+  }
+  if (sortKey === 'brand') return String(row.brand || '').toLowerCase()
+  if (sortKey === 'productName') return String(row.productName || '').toLowerCase()
+  if (sortKey === 'weight') return row.weight
+  if (sortKey === 'revenue') return row.revenue
+  if (sortKey === 'revenuePerMinute') return row.weight ? row.revenue / row.weight : 0
+  return ''
+}
+
 function brandNameClass(brand) {
   const length = String(brand || '').length
   if (length >= 14) return 'brand-name is-tiny'
@@ -169,6 +263,11 @@ export default function Dashboard({ month, data }) {
   const [previousData, setPreviousData] = useState(null)
   const [mdCategory, setMdCategory] = useState('ALL')
   const [activeTooltip, setActiveTooltip] = useState(null)
+  const [selectedBrand, setSelectedBrand] = useState(null)
+  const [broadcastSort, setBroadcastSort] = useState({ key: 'time', direction: 'asc' })
+  const [broadcastColumnWidths, setBroadcastColumnWidths] = useState(
+    Object.fromEntries(BROADCAST_COLUMNS.map((column) => [column.key, column.width])),
+  )
 
   useEffect(() => {
     let ignore = false
@@ -201,7 +300,9 @@ export default function Dashboard({ month, data }) {
           setRawData(payload.data)
           localStorage.setItem(cacheKey(month), JSON.stringify(payload.data))
         }
-      } catch {}
+      } catch {
+        // Keep the dashboard usable with cached or empty data when remote refresh fails.
+      }
     }
 
     loadData()
@@ -238,7 +339,9 @@ export default function Dashboard({ month, data }) {
           setPreviousData(payload.data)
           localStorage.setItem(cacheKey(prevMonth), JSON.stringify(payload.data))
         }
-      } catch {}
+      } catch {
+        // Previous month data is optional; deltas fall back to zero when it is unavailable.
+      }
     }
 
     loadPreviousData()
@@ -272,6 +375,41 @@ export default function Dashboard({ month, data }) {
     [analysis],
   )
   const showBrandDetail = mdCategory !== 'ALL'
+  const activeSelectedBrand =
+    selectedBrand?.month === month && selectedBrand?.mdCategory === mdCategory ? selectedBrand : null
+  const selectedCompany = activeSelectedBrand
+    ? analysis.find((company) => company.key === activeSelectedBrand.companyKey)
+    : null
+  const selectedChannelOrder = activeSelectedBrand ? getSelectedChannelOrder(activeSelectedBrand.companyKey) : []
+  const selectedBroadcastGroups = activeSelectedBrand
+    ? selectedChannelOrder.map((companyKey) => {
+        const company = analysis.find((item) => item.key === companyKey)
+        const broadcasts = company?.broadcastsByBrand[activeSelectedBrand.brand] || []
+
+        return {
+          key: companyKey,
+          label: company?.label || companyKey,
+          accent: company?.accent || '#6e6e73',
+          broadcasts: broadcasts.map((broadcast) => ({
+            ...broadcast,
+            key: `${companyKey}-${broadcast.key}`,
+          })),
+        }
+      })
+    : []
+  const sortedBroadcastGroups = selectedBroadcastGroups.map((group) => ({
+    ...group,
+    broadcasts: group.broadcasts.slice().sort((a, b) => {
+      const aValue = getBroadcastSortValue(a, broadcastSort.key)
+      const bValue = getBroadcastSortValue(b, broadcastSort.key)
+      const direction = broadcastSort.direction === 'asc' ? 1 : -1
+
+      if (typeof aValue === 'number' && typeof bValue === 'number') {
+        return (aValue - bValue) * direction
+      }
+      return String(aValue).localeCompare(String(bValue), 'ko') * direction
+    }),
+  }))
 
   const showTooltip = (event, tooltip) => {
     setActiveTooltip({ ...tooltip, x: event.clientX, y: event.clientY })
@@ -283,6 +421,45 @@ export default function Dashboard({ month, data }) {
 
   const hideTooltip = () => {
     setActiveTooltip(null)
+  }
+
+  const selectBrand = (companyKey, brand) => {
+    setSelectedBrand((current) =>
+      current?.companyKey === companyKey &&
+      current?.brand === brand &&
+      current?.month === month &&
+      current?.mdCategory === mdCategory
+        ? null
+        : { companyKey, brand, month, mdCategory },
+    )
+  }
+
+  const sortBroadcasts = (columnKey) => {
+    setBroadcastSort((current) => ({
+      key: columnKey,
+      direction: current.key === columnKey && current.direction === 'asc' ? 'desc' : 'asc',
+    }))
+  }
+
+  const resizeBroadcastColumn = (columnKey, event) => {
+    event.preventDefault()
+    event.stopPropagation()
+
+    const startX = event.clientX
+    const startWidth = broadcastColumnWidths[columnKey]
+
+    const onMouseMove = (moveEvent) => {
+      const nextWidth = Math.max(70, startWidth + moveEvent.clientX - startX)
+      setBroadcastColumnWidths((current) => ({ ...current, [columnKey]: nextWidth }))
+    }
+
+    const onMouseUp = () => {
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
   }
 
   return (
@@ -329,7 +506,10 @@ export default function Dashboard({ month, data }) {
       </section>
 
       <section className="competitor-board" aria-label="브랜드별 편성 현황">
-        {analysis.map((company) => (
+        {analysis.map((company) => {
+          const isCompanySelected = activeSelectedBrand?.companyKey === company.key
+
+          return (
           <article className="company-card" key={company.key}>
             <div className="share-strip">
               <span>편성비중</span>
@@ -381,6 +561,7 @@ export default function Dashboard({ month, data }) {
                       <th>연월</th>
                       <th>브랜드</th>
                       <th>가중분(계)</th>
+                      <th>방송횟수</th>
                       <th>{company.key === 'SK' ? '경쟁사운영여부' : '당사운영여부'}</th>
                     </tr>
                   </thead>
@@ -390,8 +571,19 @@ export default function Dashboard({ month, data }) {
 
                       return (
                         <tr
-                          className={`brand-row ${row.isOperated ? '' : 'not-operated'}`}
+                          className={`brand-row ${row.isOperated ? '' : 'not-operated'} ${
+                            isCompanySelected && activeSelectedBrand.brand === row.brand ? 'is-selected' : ''
+                          }`}
                           key={`${company.key}-${row.brand}`}
+                          tabIndex="0"
+                          aria-pressed={isCompanySelected && activeSelectedBrand.brand === row.brand}
+                          onClick={() => selectBrand(company.key, row.brand)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault()
+                              selectBrand(company.key, row.brand)
+                            }
+                          }}
                         >
                           <td>{row.month}</td>
                           <td
@@ -416,12 +608,14 @@ export default function Dashboard({ month, data }) {
                           <strong className={brandNameClass(row.brand)}>{row.brand}</strong>
                           </td>
                           <td>{Math.round(row.weight).toLocaleString()}</td>
+                          <td>{row.pgmCount.toLocaleString()}</td>
                           <td className={row.isOperated ? 'yes' : 'no'}>{row.isOperated ? 'Y' : 'N'}</td>
                         </tr>
                       )
                     })}
                     {Array.from({ length: Math.max(0, maxBrandRows - company.rows.length) }).map((_, index) => (
                       <tr className="empty-row" key={`${company.key}-empty-${index}`}>
+                        <td />
                         <td />
                         <td />
                         <td />
@@ -433,8 +627,98 @@ export default function Dashboard({ month, data }) {
               </div>
             )}
           </article>
-        ))}
+          )
+        })}
       </section>
+
+      {showBrandDetail && (
+        <section className="broadcast-section" aria-label="선택 브랜드 방송 목록">
+          {!activeSelectedBrand ? (
+            <p className="broadcast-empty">브랜드 행을 클릭하세요</p>
+          ) : (
+            <>
+              <div className="broadcast-summary">
+                <strong>
+                  {selectedCompany?.label} · {activeSelectedBrand.brand}
+                </strong>
+              </div>
+              <table className="broadcast-table">
+                <colgroup>
+                  {BROADCAST_COLUMNS.map((column) => (
+                    <col key={column.key} style={{ width: `${broadcastColumnWidths[column.key]}px` }} />
+                  ))}
+                </colgroup>
+                <thead>
+                  <tr>
+                    {BROADCAST_COLUMNS.map((column) => (
+                      <th
+                        aria-sort={
+                          broadcastSort.key === column.key
+                            ? broadcastSort.direction === 'asc'
+                              ? 'ascending'
+                              : 'descending'
+                            : 'none'
+                        }
+                        key={column.key}
+                      >
+                        <button className="broadcast-sort-button" type="button" onClick={() => sortBroadcasts(column.key)}>
+                          <span>{column.label}</span>
+                          {broadcastSort.key === column.key && (
+                            <b aria-hidden="true">{broadcastSort.direction === 'asc' ? '▲' : '▼'}</b>
+                          )}
+                        </button>
+                        <span
+                          className="broadcast-resize-handle"
+                          onMouseDown={(event) => resizeBroadcastColumn(column.key, event)}
+                        />
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedBroadcastGroups.map((group) => (
+                    <Fragment key={group.key}>
+                      <tr className="broadcast-channel-row" style={{ '--channel-accent': group.accent }}>
+                        <td colSpan="6">
+                          <div className="broadcast-channel-summary">
+                            <strong>{group.label}</strong>
+                            <span>{group.broadcasts.length.toLocaleString()}회</span>
+                            <span>
+                              {formatWon(group.broadcasts.reduce((sum, row) => sum + row.revenue, 0))}
+                            </span>
+                            <span>
+                              {formatWonPerMinute(
+                                group.broadcasts.reduce((sum, row) => sum + row.revenue, 0),
+                                group.broadcasts.reduce((sum, row) => sum + row.weight, 0),
+                              )}
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                      {group.broadcasts.length ? (
+                        group.broadcasts.map((broadcast) => (
+                          <tr key={broadcast.key}>
+                            <td>{formatBroadcastTime(broadcast)}</td>
+                            <td>{broadcast.brand || activeSelectedBrand.brand}</td>
+                            <td>{broadcast.productName || '-'}</td>
+                            <td>{Math.round(broadcast.weight).toLocaleString()}</td>
+                            <td>{formatWon(broadcast.revenue)}</td>
+                            <td>{formatWonPerMinute(broadcast.revenue, broadcast.weight)}</td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr className="not-operated-channel">
+                          <td colSpan="6">미운영</td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+        </section>
+      )}
 
       {activeTooltip && (
         <div
