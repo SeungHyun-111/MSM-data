@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import './Dashboard.css'
 import { openSectionWindow } from '../utils/openSectionWindow'
 import { MD_CATEGORY_ORDER, sortByConfiguredOrder } from '../constants/competitorDropdownOrder'
@@ -9,6 +10,9 @@ const VIEW_STATE_CACHE_KEY = 'msm:dashboard-view'
 const CURRENT_YEAR = new Date().getFullYear()
 const YEARS = [CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1]
 const MONTHS = Array.from({ length: 12 }, (_, index) => index + 1)
+const TOOLTIP_WIDTH = 268
+const TOOLTIP_MAX_HEIGHT = 178
+const TOOLTIP_OFFSET = 18
 const SHEETS = [
   { key: 'SSG', label: 'SSG', accent: '#f4a261' },
   { key: 'K', label: 'K', accent: '#7aa7d9' },
@@ -286,6 +290,16 @@ function makeTooltipRows(current, previous) {
   ]
 }
 
+function getTooltipPosition(x, y) {
+  const maxLeft = window.innerWidth - TOOLTIP_WIDTH - TOOLTIP_OFFSET
+  const maxTop = window.innerHeight - TOOLTIP_MAX_HEIGHT - TOOLTIP_OFFSET
+
+  return {
+    left: Math.max(TOOLTIP_OFFSET, Math.min(x + TOOLTIP_OFFSET, maxLeft)),
+    top: Math.max(TOOLTIP_OFFSET, Math.min(y + TOOLTIP_OFFSET, maxTop)),
+  }
+}
+
 const emptyStats = { pgmCount: 0, weight: 0, revenue: 0 }
 
 export default function Dashboard({ month, data, onChangeMonth }) {
@@ -478,6 +492,27 @@ export default function Dashboard({ month, data, onChangeMonth }) {
   const hideTooltip = () => {
     setActiveTooltip(null)
   }
+
+  const tooltipElement = activeTooltip
+    ? createPortal(
+        <div
+          className="floating-tooltip"
+          style={getTooltipPosition(activeTooltip.x, activeTooltip.y)}
+          role="tooltip"
+        >
+          <b>{activeTooltip.title}</b>
+          {activeTooltip.rows.map((row) => (
+            <em key={row.label}>
+              <span>{row.label}</span>
+              <strong>
+                {row.value} ({row.delta})
+              </strong>
+            </em>
+          ))}
+        </div>,
+        document.body,
+      )
+    : null
 
   const isBrandSelected = (companyKey, brand) =>
     activeSelectedBrands.some((item) => item.companyKey === companyKey && item.brand === brand)
@@ -825,26 +860,7 @@ export default function Dashboard({ month, data, onChangeMonth }) {
         </section>
       )}
 
-      {activeTooltip && (
-        <div
-          className="floating-tooltip"
-          style={{
-            left: Math.min(activeTooltip.x + 18, window.innerWidth - 286),
-            top: Math.min(activeTooltip.y + 18, window.innerHeight - 178),
-          }}
-          role="tooltip"
-        >
-          <b>{activeTooltip.title}</b>
-          {activeTooltip.rows.map((row) => (
-            <em key={row.label}>
-              <span>{row.label}</span>
-              <strong>
-                {row.value} ({row.delta})
-              </strong>
-            </em>
-          ))}
-        </div>
-      )}
+      {tooltipElement}
     </main>
   )
 }
