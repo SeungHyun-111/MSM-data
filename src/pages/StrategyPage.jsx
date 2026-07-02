@@ -9,6 +9,11 @@ const YEARS = [CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1]
 const MONTHS = Array.from({ length: 12 }, (_, index) => index + 1)
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토']
 const STRATEGY_TEAM_CACHE_KEY = 'msm:strategy-team'
+const STRATEGY_TEXT_LAYOUT_CACHE_KEY = 'msm:strategy-text-layout'
+const STRATEGY_TEXT_LAYOUTS = {
+  FIT: 'fit',
+  ORIGINAL: 'original',
+}
 const DETAIL_COLUMNS = [
   { key: 'requestDate', label: '요청일', width: 116 },
   { key: 'requestTime', label: '시간', width: 92 },
@@ -32,6 +37,11 @@ const TEAMS = [
 
 function readCachedTeam() {
   return localStorage.getItem(STRATEGY_TEAM_CACHE_KEY) || TEAMS[0].key
+}
+
+function readCachedTextLayout() {
+  const cached = localStorage.getItem(STRATEGY_TEXT_LAYOUT_CACHE_KEY)
+  return Object.values(STRATEGY_TEXT_LAYOUTS).includes(cached) ? cached : STRATEGY_TEXT_LAYOUTS.ORIGINAL
 }
 
 function addMonths(month, offset) {
@@ -129,10 +139,12 @@ function getDetailSortValue(plan, columnKey) {
   return String(plan[columnKey] || '').toLowerCase()
 }
 
-function RichTextBlock({ richText, fallback }) {
+function RichTextBlock({ richText, fallback, preserveLineBreaks }) {
   const runs = Array.isArray(richText?.runs) ? richText.runs : []
 
-  if (runs.length === 0) return fallback || ''
+  if (runs.length === 0) {
+    return preserveLineBreaks ? fallback || '' : String(fallback || '').replace(/\s*\n+\s*/g, ' ')
+  }
 
   return runs.flatMap((run, index) => {
     const textDecorations = [
@@ -148,6 +160,14 @@ function RichTextBlock({ richText, fallback }) {
       fontStyle: isItalic ? 'oblique 12deg' : undefined,
       textDecoration: textDecorations.length > 0 ? textDecorations.join(' ') : undefined,
       textDecorationThickness: run.strikethrough ? '1.5px' : undefined,
+    }
+
+    if (!preserveLineBreaks) {
+      return (
+        <span className="rich-text-run" key={index} style={style}>
+          {String(run.text || '').replace(/\s*\n+\s*/g, ' ')}
+        </span>
+      )
     }
 
     return String(run.text || '').split('\n').flatMap((line, lineIndex, lines) => {
@@ -294,9 +314,9 @@ function openStrategyPdfWindow(month, strategyData, popupTarget, selectedTeamKey
   <title>${escapeHtml(formatMonthLabel(month))} 월간 편성 전략 PDF</title>
   <style>
     @page { size: A3 landscape; margin: 10mm; }
-    * { box-sizing: border-box; }
+    * { box-sizing: border-box; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
     body { margin: 0; background: #f5f5f7; color: #1d1d1f; font-family: Arial, "Noto Sans KR", sans-serif; }
-    .print-page { width: 100%; height: 277mm; padding: 0; page-break-after: always; background: #f5f5f7; display: grid; grid-template-rows: 48px 1fr 2fr; gap: 12px; overflow: hidden; }
+    .print-page { width: 100%; height: 277mm; padding: 0; page-break-after: always; background: #f5f5f7; display: grid; grid-template-rows: 48px minmax(0, 1.5fr) minmax(0, 2fr); gap: 12px; overflow: hidden; }
     .print-page:last-child { page-break-after: auto; }
     .print-header { height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
     .print-header h1 { margin: 0; font-size: 25px; font-weight: 900; letter-spacing: 0; }
@@ -305,12 +325,13 @@ function openStrategyPdfWindow(month, strategyData, popupTarget, selectedTeamKey
     .print-section-title h2 { margin: 0; color: #1d1d1f; font-size: 17px; font-weight: 900; letter-spacing: 0; }
     .print-strategy-section { min-height: 0; display: grid; grid-template-rows: 34px minmax(0, 1fr); }
     .print-strategy-grid { min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; padding: 14px; border: 1px solid #dfe3ea; border-radius: 0 0 14px 14px; background: #fff; }
-    .print-strategy-card { position: relative; height: 100%; min-height: 0; overflow: hidden; padding: 18px; border-radius: 12px; background: #f3f8ff; border: 1px solid rgba(47, 128, 237, 0.18); }
+    .print-strategy-card { --strategy-padding: 18px; --strategy-title-size: 20px; --strategy-font-size: 12px; --strategy-line-height: 1.45; position: relative; height: 100%; min-height: 0; overflow: hidden; padding: var(--strategy-padding); border-radius: 12px; background: #f3f8ff; border: 1px solid rgba(47, 128, 237, 0.18); }
     .print-strategy-card::before { content: ''; position: absolute; inset: 0 0 auto; height: 5px; background: #2f80ed; }
     .print-strategy-card.is-next { background: #fff7ed; border-color: rgba(242, 153, 74, 0.22); }
     .print-strategy-card.is-next::before { background: #f2994a; }
-    .print-strategy-card strong { display: block; font-size: 20px; font-weight: 900; line-height: 1; }
-    .print-strategy-card p { margin: 12px 0 0; font-size: 12px; line-height: 1.45; color: #111827; white-space: normal; }
+    .print-strategy-card strong { display: block; font-size: var(--strategy-title-size); font-weight: 900; line-height: 1; }
+    .print-strategy-card p { margin: 12px 0 0; font-size: var(--strategy-font-size); line-height: var(--strategy-line-height); color: #111827; white-space: normal; }
+    .print-strategy-card p span { font-size: inherit !important; line-height: inherit !important; }
     .print-calendar { min-height: 0; overflow: hidden; border-radius: 14px; background: #fff; display: grid; grid-template-rows: 34px minmax(0, 1fr); }
     .print-calendar-grid { height: 100%; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); grid-template-rows: 30px repeat(6, minmax(0, 1fr)); border: 1px solid #dfe3ea; border-radius: 0 0 14px 14px; overflow: hidden; }
     .print-weekday, .print-day { min-width: 0; border-right: 1px solid #dfe3ea; border-bottom: 1px solid #dfe3ea; }
@@ -337,7 +358,38 @@ function openStrategyPdfWindow(month, strategyData, popupTarget, selectedTeamKey
 <body>
   ${pages || '<section class="print-page"><p>출력할 월간전략 데이터가 없습니다.</p></section>'}
   <script>
-    window.addEventListener('load', () => setTimeout(() => window.print(), 150));
+    function fitStrategyCards() {
+      document.querySelectorAll('.print-strategy-card').forEach((card) => {
+        let fontSize = 12;
+        let titleSize = 20;
+        let lineHeight = 1.45;
+        let padding = 18;
+
+        const apply = () => {
+          card.style.setProperty('--strategy-font-size', fontSize + 'px');
+          card.style.setProperty('--strategy-title-size', titleSize + 'px');
+          card.style.setProperty('--strategy-line-height', lineHeight);
+          card.style.setProperty('--strategy-padding', padding + 'px');
+        };
+
+        apply();
+
+        for (let step = 0; step < 18 && card.scrollHeight > card.clientHeight; step += 1) {
+          fontSize = Math.max(7.2, fontSize - 0.35);
+          titleSize = Math.max(13, titleSize - 0.45);
+          lineHeight = Math.max(1.12, lineHeight - 0.025);
+          padding = Math.max(8, padding - 0.7);
+          apply();
+        }
+      });
+    }
+
+    window.addEventListener('load', () => {
+      requestAnimationFrame(() => {
+        fitStrategyCards();
+        setTimeout(() => window.print(), 150);
+      });
+    });
   </script>
 </body>
 </html>`)
@@ -355,12 +407,14 @@ export default function StrategyPage({ month, refreshVersion = 0, onChangeMonth 
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
   const [isDetailOpen, setIsDetailOpen] = useState(false)
+  const [strategyTextLayout, setStrategyTextLayout] = useState(readCachedTextLayout)
   const [detailSort, setDetailSort] = useState({ key: 'requestDate', direction: 'asc' })
   const [detailColumnWidths, setDetailColumnWidths] = useState(
     Object.fromEntries(DETAIL_COLUMNS.map((column) => [column.key, column.width])),
   )
   const selectedTeamLabel = TEAMS.find((team) => team.key === selectedTeam)?.label || TEAMS[0].label
   const teamData = strategyData?.teams?.[selectedTeam] || null
+  const preserveStrategyLineBreaks = strategyTextLayout === STRATEGY_TEXT_LAYOUTS.ORIGINAL
   const plans = useMemo(() => sortPlans(teamData?.plans || []), [teamData])
   const detailPlans = useMemo(() => {
     return [...plans].sort((a, b) => {
@@ -408,6 +462,10 @@ export default function StrategyPage({ month, refreshVersion = 0, onChangeMonth 
   useEffect(() => {
     localStorage.setItem(STRATEGY_TEAM_CACHE_KEY, selectedTeam)
   }, [selectedTeam])
+
+  useEffect(() => {
+    localStorage.setItem(STRATEGY_TEXT_LAYOUT_CACHE_KEY, strategyTextLayout)
+  }, [strategyTextLayout])
 
   useEffect(() => {
     const handleExportPdf = (event) => {
@@ -509,7 +567,28 @@ export default function StrategyPage({ month, refreshVersion = 0, onChangeMonth 
         </section>
       )}
 
-      <section className="strategy-plans" aria-label="월간 전략">
+      <section
+        className={`strategy-plans ${preserveStrategyLineBreaks ? 'is-original-layout' : 'is-fit-layout'}`}
+        aria-label="월간 전략"
+      >
+        <div className="strategy-text-layout-toggle" aria-label="전략 본문 줄바꿈 방식">
+          <button
+            type="button"
+            className={!preserveStrategyLineBreaks ? 'is-active' : ''}
+            aria-pressed={!preserveStrategyLineBreaks}
+            onClick={() => setStrategyTextLayout(STRATEGY_TEXT_LAYOUTS.FIT)}
+          >
+            폭 맞춤
+          </button>
+          <button
+            type="button"
+            className={preserveStrategyLineBreaks ? 'is-active' : ''}
+            aria-pressed={preserveStrategyLineBreaks}
+            onClick={() => setStrategyTextLayout(STRATEGY_TEXT_LAYOUTS.ORIGINAL)}
+          >
+            원문 줄바꿈
+          </button>
+        </div>
         <article
           className="is-current"
           onContextMenu={(event) => openSectionWindow(event, `${formatMonthLabel(month)} ${selectedTeamLabel}`)}
@@ -520,6 +599,7 @@ export default function StrategyPage({ month, refreshVersion = 0, onChangeMonth 
             <RichTextBlock
               richText={teamData?.strategy?.currentRichText}
               fallback={teamData?.strategy?.currentText || '등록된 선택월 전략이 없습니다.'}
+              preserveLineBreaks={preserveStrategyLineBreaks}
             />
           </p>
         </article>
@@ -533,6 +613,7 @@ export default function StrategyPage({ month, refreshVersion = 0, onChangeMonth 
             <RichTextBlock
               richText={teamData?.strategy?.nextRichText}
               fallback={teamData?.strategy?.nextText || '등록된 익월 전략이 없습니다.'}
+              preserveLineBreaks={preserveStrategyLineBreaks}
             />
           </p>
         </article>
