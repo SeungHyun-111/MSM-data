@@ -159,29 +159,134 @@
 }
 
 .share-strip {
-  height: 54px;
-  display: flex;
+  min-height: 202px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "title action"
+    "label label"
+    "bar bar"
+    "marker marker"
+    "value value";
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 13px 12px;
   margin: 22px 22px 16px;
-  padding: 0 16px;
-  border-radius: 16px;
-  background: #f5f5f7;
+  padding: 0 6px 4px;
+  border-radius: 0;
+  background: transparent;
   box-sizing: border-box;
 }
 
+.card-company-title {
+  grid-area: title;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
 .share-strip span {
+  grid-area: label;
+  align-self: end;
+  color: #1d1d1f;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.share-strip span small {
   color: #6e6e73;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
 }
 
 .share-strip strong {
+  grid-area: value;
+  justify-self: center;
   color: #1d1d1f;
-  font-size: 28px;
-  font-weight: 700;
+  font-size: 36px;
+  font-weight: 800;
   line-height: 1;
+}
+
+.share-strip .delta-trigger {
+  grid-area: action;
+}
+
+.share-progress {
+  grid-area: bar;
+  width: 100%;
+  height: 20px;
+  display: flex;
+  overflow: hidden;
+  align-self: start;
+  border-radius: 4px;
+  background: #d7d7d7;
+}
+
+.share-progress-segment {
+  height: 100%;
+  min-width: 0;
+  flex-grow: 0;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  cursor: help;
+  box-shadow: inset -2px 0 0 rgba(255, 255, 255, 0.92);
+  transition: flex-basis 180ms ease;
+}
+
+.share-progress-segment.is-selected {
+  min-width: 8px;
+}
+
+.share-selected-marker {
+  grid-area: marker;
+  position: relative;
+  min-height: 48px;
+  color: var(--marker-color);
+  font-size: 12px;
+  font-weight: 800;
+  margin-top: -5px;
+}
+
+.share-selected-marker::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: var(--marker-left);
+  width: 8px;
+  height: 8px;
+  background: var(--marker-color);
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.share-selected-marker::after {
+  content: '';
+  position: absolute;
+  top: 14px;
+  left: var(--marker-left);
+  right: 14px;
+  height: 16px;
+  border-bottom: 1px solid #d2d2d2;
+  border-left: 1px solid #d2d2d2;
+  border-right: 1px solid #d2d2d2;
+  border-radius: 0 0 4px 4px;
+}
+
+.share-selected-marker span {
+  position: relative;
+  z-index: 1;
+  display: block;
+  padding-top: 33px;
+  color: var(--marker-color);
+  font-size: 12px;
+  line-height: 1.15;
+  text-align: center;
 }
 
 .delta-trigger {
@@ -245,6 +350,23 @@
   color: #1d1d1f;
   font-size: 13px;
   text-align: right;
+}
+
+.floating-tooltip.is-compact {
+  width: auto;
+  min-width: 108px;
+  padding: 12px 14px;
+}
+
+.floating-tooltip.is-compact b {
+  margin-bottom: 8px;
+}
+
+.tooltip-primary-value {
+  display: block;
+  color: #1d1d1f;
+  font-size: 18px;
+  line-height: 1;
 }
 
 .company-name {

@@ -14,9 +14,9 @@ const TOOLTIP_WIDTH = 268
 const TOOLTIP_MAX_HEIGHT = 178
 const TOOLTIP_OFFSET = 18
 const SHEETS = [
-  { key: 'SSG', label: 'SSG', accent: '#f4a261' },
-  { key: 'K', label: 'K', accent: '#7aa7d9' },
-  { key: 'SK', label: 'SK스토아', accent: '#e98b8b' },
+  { key: 'SSG', label: 'SSG', accent: '#ff6b00' },
+  { key: 'K', label: 'K', accent: '#2f6fd6' },
+  { key: 'SK', label: 'SK스토아', accent: '#e12d39' },
 ]
 const BROADCAST_COLUMNS = [
   { key: 'time', label: '방송일시', width: 170 },
@@ -139,6 +139,40 @@ function aggregateByBrand(rows) {
     .sort((a, b) => b.weight - a.weight)
 }
 
+function aggregateMdCategoryShareSegments(rows, selectedMdCategory, selectedColor) {
+  const monthlyWeight = rows.reduce((sum, row) => sum + getWeight(row), 0)
+
+  if (selectedMdCategory === 'ALL') {
+    return [{ category: 'ALL', share: monthlyWeight ? 100 : 0, color: selectedColor, isSelected: true }]
+  }
+
+  const map = new Map()
+  rows.forEach((row) => {
+    const category = String(row.mdCategory || '').trim()
+    if (!category) return
+    map.set(category, (map.get(category) || 0) + getWeight(row))
+  })
+
+  const selected = {
+    category: selectedMdCategory,
+    share: monthlyWeight ? ((map.get(selectedMdCategory) || 0) / monthlyWeight) * 100 : 0,
+    color: selectedColor,
+    isSelected: true,
+  }
+
+  const remaining = [...map.entries()]
+    .filter(([category]) => category !== selectedMdCategory)
+    .map(([category, weight]) => ({
+      category,
+      share: monthlyWeight ? (weight / monthlyWeight) * 100 : 0,
+      color: '#d7d7d7',
+      isSelected: false,
+    }))
+    .sort((a, b) => b.share - a.share)
+
+  return [selected, ...remaining]
+}
+
 function buildAnalysis(data, mdCategory) {
   const allRowsBySheet = Object.fromEntries(SHEETS.map(({ key }) => [key, data?.[key] || []]))
   const selectedRowsBySheet = Object.fromEntries(
@@ -166,6 +200,7 @@ function buildAnalysis(data, mdCategory) {
       selectedWeight,
       monthlyWeight,
       share: monthlyWeight ? (selectedWeight / monthlyWeight) * 100 : 0,
+      shareSegments: aggregateMdCategoryShareSegments(allRowsBySheet[sheet.key], mdCategory, sheet.accent),
       brandCount: rows.length,
       operatedCount,
       broadcastsByBrand: buildBroadcastsByBrand(selectedRowsBySheet[sheet.key]),
@@ -200,6 +235,10 @@ function formatDelta(value, unit = '') {
   const rounded = Math.round(value)
   if (rounded === 0) return `0${unit}`
   return `${rounded > 0 ? '+' : ''}${rounded.toLocaleString()}${unit}`
+}
+
+function formatShare(value) {
+  return `${value.toFixed(1)}%`
 }
 
 function formatMoney(value) {
@@ -496,19 +535,23 @@ export default function Dashboard({ month, data, onChangeMonth }) {
   const tooltipElement = activeTooltip
     ? createPortal(
         <div
-          className="floating-tooltip"
+          className={`floating-tooltip ${activeTooltip.compact ? 'is-compact' : ''}`}
           style={getTooltipPosition(activeTooltip.x, activeTooltip.y)}
           role="tooltip"
         >
           <b>{activeTooltip.title}</b>
-          {activeTooltip.rows.map((row) => (
-            <em key={row.label}>
-              <span>{row.label}</span>
-              <strong>
-                {row.value} ({row.delta})
-              </strong>
-            </em>
-          ))}
+          {activeTooltip.value ? (
+            <strong className="tooltip-primary-value">{activeTooltip.value}</strong>
+          ) : (
+            activeTooltip.rows.map((row) => (
+              <em key={row.label}>
+                <span>{row.label}</span>
+                <strong>
+                  {row.value} ({row.delta})
+                </strong>
+              </em>
+            ))
+          )}
         </div>,
         document.body,
       )
@@ -642,8 +685,11 @@ export default function Dashboard({ month, data, onChangeMonth }) {
             title="우클릭하면 새창으로 열립니다"
           >
             <div className="share-strip">
-              <span>편성비중</span>
-              <strong>{company.share.toFixed(1)}%</strong>
+              <h3 className="card-company-title" style={{ color: company.accent }}>
+                {company.label}
+              </h3>
+              <span>편성비중 <small>(전체 카테고리 대비)</small></span>
+              <strong style={{ color: company.accent }}>{formatShare(company.share)}</strong>
               <button
                 className="delta-trigger"
                 type="button"
@@ -666,10 +712,46 @@ export default function Dashboard({ month, data, onChangeMonth }) {
               >
                 전월대비
               </button>
-            </div>
-
-            <div className="company-name" style={{ background: company.accent }}>
-              {company.label}
+              <div className="share-progress" aria-label={`${company.label} ${formatShare(company.share)}`}>
+                {company.shareSegments.map((segment) => (
+                  <button
+                    className={`share-progress-segment ${segment.isSelected ? 'is-selected' : ''}`}
+                    type="button"
+                    key={`${company.key}-${segment.category}`}
+                    style={{
+                      flexBasis: `${segment.share}%`,
+                      backgroundColor: segment.color,
+                    }}
+                    aria-label={`${segment.category} ${formatShare(segment.share)}`}
+                    onMouseEnter={(event) =>
+                      showTooltip(event, {
+                        title: segment.category,
+                        value: formatShare(segment.share),
+                        compact: true,
+                      })
+                    }
+                    onMouseMove={moveTooltip}
+                    onMouseLeave={hideTooltip}
+                    onFocus={(event) =>
+                      showTooltip(event, {
+                        title: segment.category,
+                        value: formatShare(segment.share),
+                        compact: true,
+                      })
+                    }
+                    onBlur={hideTooltip}
+                  />
+                ))}
+              </div>
+              <div
+                className="share-selected-marker"
+                style={{
+                  '--marker-color': company.accent,
+                  '--marker-left': `clamp(4px, ${company.share / 2}%, 96%)`,
+                }}
+              >
+                <span>{visibleMdCategory === 'ALL' ? '전체' : visibleMdCategory}</span>
+              </div>
             </div>
 
             <div className="company-metrics">
