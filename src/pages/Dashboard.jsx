@@ -54,7 +54,7 @@ function toNumber(value) {
 }
 
 function getWeight(row) {
-  return toNumber(row.brandWeightedMin || row.weightedMin || row.simpleMin)
+  return toNumber(row.weightedMin)
 }
 
 function getRevenue(row) {
