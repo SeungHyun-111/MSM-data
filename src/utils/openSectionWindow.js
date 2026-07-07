@@ -1,11 +1,19 @@
-export function openSectionWindow(event, title) {
+export function openSectionWindow(event, title, options = {}) {
   event.preventDefault()
   event.stopPropagation()
 
   const source = event.currentTarget
-  const popup = window.open('', '_blank', 'width=1280,height=900')
+  const popupFeatures = options.fullscreen
+    ? `left=0,top=0,width=${window.screen.availWidth},height=${window.screen.availHeight}`
+    : 'width=1280,height=900'
+  const popup = window.open('', '_blank', popupFeatures)
 
   if (!popup) return
+
+  if (options.fullscreen) {
+    popup.moveTo?.(0, 0)
+    popup.resizeTo?.(window.screen.availWidth, window.screen.availHeight)
+  }
 
   const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
     .map((node) => node.outerHTML)

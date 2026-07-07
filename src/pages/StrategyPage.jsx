@@ -591,7 +591,9 @@ export default function StrategyPage({ month, refreshVersion = 0, onChangeMonth 
         </div>
         <article
           className="is-current"
-          onContextMenu={(event) => openSectionWindow(event, `${formatMonthLabel(month)} ${selectedTeamLabel}`)}
+          onContextMenu={(event) =>
+            openSectionWindow(event, `${formatMonthLabel(month)} ${selectedTeamLabel}`, { fullscreen: true })
+          }
           title="우클릭하면 새창으로 열립니다"
         >
           <strong>{formatMonthLabel(month)}</strong>
@@ -605,7 +607,9 @@ export default function StrategyPage({ month, refreshVersion = 0, onChangeMonth 
         </article>
         <article
           className="is-next"
-          onContextMenu={(event) => openSectionWindow(event, `${formatMonthLabel(nextMonth)} ${selectedTeamLabel}`)}
+          onContextMenu={(event) =>
+            openSectionWindow(event, `${formatMonthLabel(nextMonth)} ${selectedTeamLabel}`, { fullscreen: true })
+          }
           title="우클릭하면 새창으로 열립니다"
         >
           <strong>{formatMonthLabel(nextMonth)}</strong>
@@ -622,7 +626,9 @@ export default function StrategyPage({ month, refreshVersion = 0, onChangeMonth 
       <section
         className="month-calendar"
         aria-label={`${formatMonthLabel(month)} 캘린더`}
-        onContextMenu={(event) => openSectionWindow(event, `${formatMonthLabel(month)} ${selectedTeamLabel} 캘린더`)}
+        onContextMenu={(event) =>
+          openSectionWindow(event, `${formatMonthLabel(month)} ${selectedTeamLabel} 캘린더`, { fullscreen: true })
+        }
         title="우클릭하면 새창으로 열립니다"
       >
         <div className="calendar-title">
@@ -673,7 +679,9 @@ export default function StrategyPage({ month, refreshVersion = 0, onChangeMonth 
 
       <section
         className="request-details"
-        onContextMenu={(event) => openSectionWindow(event, `${formatMonthLabel(month)} ${selectedTeamLabel} 상세 요청`)}
+        onContextMenu={(event) =>
+          openSectionWindow(event, `${formatMonthLabel(month)} ${selectedTeamLabel} 상세 요청`, { fullscreen: true })
+        }
         title="우클릭하면 새창으로 열립니다"
       >
         <button

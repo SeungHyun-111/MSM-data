@@ -770,11 +770,10 @@ export default function Dashboard({ month, data, onChangeMonth }) {
                 <table className="brand-table">
                   <thead>
                     <tr>
-                      <th>연월</th>
                       <th>브랜드</th>
                       <th>가중분(계)</th>
                       <th>방송횟수</th>
-                      <th>{company.key === 'SK' ? '경쟁사운영여부' : '당사운영여부'}</th>
+                      <th>병행여부</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -796,7 +795,6 @@ export default function Dashboard({ month, data, onChangeMonth }) {
                             }
                           }}
                         >
-                          <td>{row.month}</td>
                           <td
                             className="brand-cell"
                             tabIndex="0"
@@ -826,7 +824,6 @@ export default function Dashboard({ month, data, onChangeMonth }) {
                     })}
                     {Array.from({ length: Math.max(0, maxBrandRows - company.rows.length) }).map((_, index) => (
                       <tr className="empty-row" key={`${company.key}-empty-${index}`}>
-                        <td />
                         <td />
                         <td />
                         <td />
