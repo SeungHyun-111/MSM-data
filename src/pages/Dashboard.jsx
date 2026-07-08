@@ -27,9 +27,11 @@ const BROADCAST_COLUMNS = [
   { key: 'revenue', label: '매출액', width: 170 },
   { key: 'revenuePerMinute', label: '분당 매출액', width: 170 },
 ]
+const COMPETITOR_CACHE_PREFIX = 'msm:competitor:'
+const COMPETITOR_CACHE_RETAIN_MONTHS = 3
 
 function cacheKey(month) {
-  return `msm:competitor:${month}`
+  return `${COMPETITOR_CACHE_PREFIX}${month}`
 }
 
 function readCachedViewState() {
@@ -46,6 +48,31 @@ function previousMonth(month) {
   const monthNumber = Number(month.slice(4, 6))
   const date = new Date(year, monthNumber - 2, 1)
   return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}`
+}
+
+function addMonths(month, offset) {
+  const year = Number(month.slice(0, 4))
+  const monthNumber = Number(month.slice(4, 6))
+  const date = new Date(year, monthNumber - 1 + offset, 1)
+  return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}`
+}
+
+function pruneCompetitorCache(anchorMonth) {
+  const keepMonths = new Set(
+    Array.from({ length: COMPETITOR_CACHE_RETAIN_MONTHS }, (_, index) => addMonths(anchorMonth, -index)),
+  )
+
+  Object.keys(localStorage)
+    .filter((key) => key.startsWith(COMPETITOR_CACHE_PREFIX))
+    .forEach((key) => {
+      const month = key.slice(COMPETITOR_CACHE_PREFIX.length)
+      if (!keepMonths.has(month)) localStorage.removeItem(key)
+    })
+}
+
+function writeCachedMonthlyData(month, data, anchorMonth = month) {
+  localStorage.setItem(cacheKey(month), JSON.stringify(data))
+  pruneCompetitorCache(anchorMonth)
 }
 
 function toNumber(value) {
@@ -376,7 +403,7 @@ export default function Dashboard({ month, data, onChangeMonth }) {
       setRawData(data || null)
 
       if (data) {
-        localStorage.setItem(cacheKey(month), JSON.stringify(data))
+        writeCachedMonthlyData(month, data)
         return
       }
 
@@ -398,7 +425,7 @@ export default function Dashboard({ month, data, onChangeMonth }) {
 
         if (!ignore) {
           setRawData(payload.data)
-          localStorage.setItem(cacheKey(month), JSON.stringify(payload.data))
+          writeCachedMonthlyData(month, payload.data)
         }
       } catch {
         // Keep the dashboard usable with cached or empty data when remote refresh fails.
@@ -437,7 +464,7 @@ export default function Dashboard({ month, data, onChangeMonth }) {
 
         if (!ignore) {
           setPreviousData(payload.data)
-          localStorage.setItem(cacheKey(prevMonth), JSON.stringify(payload.data))
+          writeCachedMonthlyData(prevMonth, payload.data, month)
         }
       } catch {
         // Previous month data is optional; deltas fall back to zero when it is unavailable.

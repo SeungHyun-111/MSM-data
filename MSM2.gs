@@ -51,6 +51,7 @@ const MSM2 = {
   planStartRow: 54,
   planStartCol: 2, // B
   planColCount: 16, // B:Q
+  planRequiredCol: 8, // H
   teams: [
     { sheetNames: ['\ubdf0\ud2f0'], teamKey: 'beauty', teamName: '\ubdf0\ud2f0' },
     { sheetNames: ['\ub9ac\uc2dd\ud488', '\uc2dd\ud488'], teamKey: 'food', teamName: '\uc2dd\ud488' },
@@ -127,7 +128,7 @@ function msm2ReadTeam_(sheet, team, month, sheetMonth) {
 }
 
 function msm2ReadPlans_(sheet, month) {
-  const lastRow = sheet.getLastRow()
+  const lastRow = msm2FindLastPlanRow_(sheet)
   if (lastRow < MSM2.planStartRow) return []
 
   const rowCount = lastRow - MSM2.planStartRow + 1
@@ -172,6 +173,22 @@ function msm2ReadPlans_(sheet, month) {
   })
 
   return plans
+}
+
+function msm2FindLastPlanRow_(sheet) {
+  const sheetLastRow = sheet.getLastRow()
+  if (sheetLastRow < MSM2.planStartRow) return 0
+
+  const rowCount = sheetLastRow - MSM2.planStartRow + 1
+  const values = sheet
+    .getRange(MSM2.planStartRow, MSM2.planRequiredCol, rowCount, 1)
+    .getDisplayValues()
+
+  for (let i = values.length - 1; i >= 0; i -= 1) {
+    if (msm2Clean_(values[i][0])) return MSM2.planStartRow + i
+  }
+
+  return 0
 }
 
 function msm2Summarize_(plans) {

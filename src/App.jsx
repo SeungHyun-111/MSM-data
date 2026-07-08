@@ -8,10 +8,11 @@ import MainPage from './pages/MainPage'
 import StrategyPage from './pages/StrategyPage'
 
 const COMPETITOR_REFRESH_URL = 'https://script.google.com/macros/s/AKfycbzE147wQl7Qiz59QEB-vxEppregg32FbZRCqSHqmaK8_8OiMpPnu-S_znUeyORt59gd/exec'
-const STRATEGY_REFRESH_URL = 'https://script.google.com/macros/s/AKfycbwCDcSH4P2Ar2W45_VxuVVQyj0Sa1SzFuVOAMGGFkGp185peKQHmzRKTAbqG0EzYYzb6Q/exec'
+const STRATEGY_REFRESH_URL = 'https://script.google.com/macros/s/AKfycbxIm3HscMzbuKlWtWA6f5u18fJEhrhTqsl5T4Tl43BLMOETTUTqaZ7pI1L6yS43gThn-Q/exec'
 const FIREBASE_BASE_URL = 'https://schedule-7ec7a-default-rtdb.asia-southeast1.firebasedatabase.app'
 const FIREBASE_MSM_PATH = 'competitorInfo/monthly'
 const FIREBASE_STRATEGY_PATH = 'monthlyStrategy'
+const FIREBASE_METADATA_PATH = 'metadata'
 const APP_STATE_CACHE_KEY = 'msm:app-state'
 
 function getCurrentMonth() {
@@ -59,7 +60,7 @@ function requestJsonp(baseUrl, params) {
     console.info('[MSM] Requesting GAS refresh', url.toString())
 
     window[callbackName] = (payload) => {
-      console.info('[MSM] GAS refresh response', payload)
+      console.info('[MSM] GAS refresh response', summarizeRefreshResponse(payload))
       cleanup()
       resolve(payload)
     }
@@ -78,8 +79,45 @@ function requestJsonp(baseUrl, params) {
   })
 }
 
-async function saveCompetitorPayloadToFirebase(ym, payload) {
-  const url = `${FIREBASE_BASE_URL}/${FIREBASE_MSM_PATH}/${ym}.json`
+function summarizeRefreshResponse(payload) {
+  return {
+    ok: payload?.ok,
+    firebasePath: payload?.firebasePath,
+    updatedAt: payload?.updatedAt || payload?.payload?.updatedAt,
+    counts: payload?.counts,
+    month: payload?.payload?.month,
+    teamCount: Object.keys(payload?.payload?.teams || {}).length,
+  }
+}
+
+function buildCompetitorMetadata(payload) {
+  const counts = Object.fromEntries(
+    Object.entries(payload?.data || {}).map(([sheet, rows]) => [sheet, Array.isArray(rows) ? rows.length : 0]),
+  )
+
+  return {
+    month: payload?.month,
+    updatedAt: payload?.updatedAt,
+    rowCount: Object.values(counts).reduce((sum, count) => sum + count, 0),
+    counts,
+    meta: 'broadcasts',
+  }
+}
+
+function buildStrategyMetadata(payload) {
+  const teams = Object.values(payload?.teams || {})
+
+  return {
+    month: payload?.month,
+    updatedAt: payload?.updatedAt,
+    rowCount: teams.reduce((sum, team) => sum + (Array.isArray(team?.plans) ? team.plans.length : 0), 0),
+    teamCount: teams.length,
+    meta: `${teams.length} teams`,
+  }
+}
+
+async function putJson(path, payload) {
+  const url = `${FIREBASE_BASE_URL}/${path}.json`
   const res = await fetch(url, {
     method: 'PUT',
     headers: {
@@ -94,26 +132,34 @@ async function saveCompetitorPayloadToFirebase(ym, payload) {
   }
 }
 
-async function saveStrategyPayloadToFirebase(ym, payload) {
-  const url = `${FIREBASE_BASE_URL}/${FIREBASE_STRATEGY_PATH}/${ym}.json`
-  const res = await fetch(url, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  })
+async function saveCompetitorPayloadToFirebase(ym, payload) {
+  await putJson(`${FIREBASE_MSM_PATH}/${ym}`, payload)
+  try {
+    await putJson(`${FIREBASE_METADATA_PATH}/${FIREBASE_MSM_PATH}/${ym}`, buildCompetitorMetadata(payload))
+  } catch (error) {
+    console.warn('[MSM] Metadata save failed', {
+      path: `${FIREBASE_METADATA_PATH}/${FIREBASE_MSM_PATH}/${ym}`,
+      message: error.message,
+    })
+  }
+}
 
-  if (!res.ok) {
-    const message = await res.text()
-    throw new Error(`Firebase save failed: ${res.status} ${message}`)
+async function saveStrategyPayloadToFirebase(ym, payload) {
+  await putJson(`${FIREBASE_STRATEGY_PATH}/${ym}`, payload)
+  try {
+    await putJson(`${FIREBASE_METADATA_PATH}/${FIREBASE_STRATEGY_PATH}/${ym}`, buildStrategyMetadata(payload))
+  } catch (error) {
+    console.warn('[MSM] Metadata save failed', {
+      path: `${FIREBASE_METADATA_PATH}/${FIREBASE_STRATEGY_PATH}/${ym}`,
+      message: error.message,
+    })
   }
 }
 
 async function fetchDbStatus() {
   const [competitorRes, strategyRes] = await Promise.all([
-    fetch(`${FIREBASE_BASE_URL}/${FIREBASE_MSM_PATH}.json`),
-    fetch(`${FIREBASE_BASE_URL}/${FIREBASE_STRATEGY_PATH}.json`),
+    fetch(`${FIREBASE_BASE_URL}/${FIREBASE_METADATA_PATH}/${FIREBASE_MSM_PATH}.json`),
+    fetch(`${FIREBASE_BASE_URL}/${FIREBASE_METADATA_PATH}/${FIREBASE_STRATEGY_PATH}.json`),
   ])
 
   if (!competitorRes.ok) {
@@ -133,26 +179,18 @@ async function fetchDbStatus() {
     .map(([month, item]) => ({
       month,
       updatedAt: item?.updatedAt,
-      rowCount: Object.values(item?.data || {}).reduce(
-        (sum, rows) => sum + (Array.isArray(rows) ? rows.length : 0),
-        0,
-      ),
-      meta: '방송행',
+      rowCount: Number(item?.rowCount || 0),
+      meta: item?.meta || 'broadcasts',
     }))
     .sort((a, b) => b.month.localeCompare(a.month))
 
   const strategyMonths = Object.entries(strategyPayload || {})
-    .map(([month, item]) => {
-      const teams = Object.values(item?.teams || {})
-      const requestCount = teams.reduce((sum, team) => sum + (Array.isArray(team?.plans) ? team.plans.length : 0), 0)
-
-      return {
-        month,
-        updatedAt: item?.updatedAt,
-        rowCount: requestCount,
-        meta: `${teams.length}개 조직`,
-      }
-    })
+    .map(([month, item]) => ({
+      month,
+      updatedAt: item?.updatedAt,
+      rowCount: Number(item?.rowCount || 0),
+      meta: item?.meta || `${Number(item?.teamCount || 0)} teams`,
+    }))
     .sort((a, b) => b.month.localeCompare(a.month))
 
   return [
@@ -217,8 +255,8 @@ export default function App() {
       await saveCompetitorPayloadToFirebase(ym, result.payload)
 
       setCompetitorMonth(ym)
-      setMonthlyData(result.payload.data)
-      setMonthlyDataMonth(ym)
+      setMonthlyData(null)
+      setMonthlyDataMonth(null)
       setRefreshStatus({
         type: 'success',
         month: ym,
