@@ -1,10 +1,56 @@
 .strategy-page {
+  position: relative;
   min-height: calc(100svh - 44px);
   padding: 56px clamp(24px, 5vw, 80px);
   background: #f5f5f7;
   color: #1d1d1f;
   text-align: left;
 }
+
+.strategy-help-trigger {
+  position: absolute;
+  top: 14px;
+  right: max(clamp(24px, 5vw, 80px), calc((100vw - 1924px) / 2));
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 11px 0 8px;
+  border: 1px solid #ffbdc7;
+  border-radius: 9px;
+  background: #fff5f6;
+  color: #d90b35;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.strategy-help-trigger span { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; box-sizing: border-box; border: 1.5px solid currentColor; border-radius: 50%; }
+.strategy-help-trigger:hover,
+.strategy-help-trigger:focus-visible { border-color: #ed1745; background: #ffecef; }
+.strategy-coach { position: fixed; inset: 0; z-index: 1100; pointer-events: none; }
+.strategy-coach-shade { position: fixed; background: rgba(0, 0, 0, 0.54); pointer-events: auto; }
+.strategy-coach-shade.is-top { inset: 0 0 auto; }
+.strategy-coach-shade.is-left { left: 0; }
+.strategy-coach-shade.is-right { right: 0; }
+.strategy-coach-shade.is-bottom { right: 0; bottom: 0; left: 0; }
+.strategy-coach-outline { position: fixed; box-sizing: border-box; border: 2px solid #7db7ff; border-radius: 12px; box-shadow: 0 0 0 4px rgba(0, 102, 204, 0.22); pointer-events: none; }
+.strategy-coach-card { position: fixed; width: min(340px, calc(100vw - 32px)); padding: 18px; box-sizing: border-box; transform: translateX(-50%); border-radius: 16px; background: #fff; color: #1d1d1f; box-shadow: 0 18px 54px rgba(0, 0, 0, 0.28); pointer-events: auto; }
+.strategy-coach-card.is-above { transform: translate(-50%, -100%); }
+.strategy-coach-progress,
+.strategy-coach-actions,
+.strategy-coach-actions > div { display: flex; align-items: center; }
+.strategy-coach-progress,
+.strategy-coach-actions { justify-content: space-between; }
+.strategy-coach-progress { color: #6e6e73; font-size: 11px; font-weight: 700; }
+.strategy-coach-card h2 { margin: 14px 0 7px; font-size: 18px; }
+.strategy-coach-card p { margin: 0 0 18px; color: #515154; font-size: 13px; line-height: 1.55; }
+.strategy-coach-card button { border: 0; border-radius: 8px; padding: 8px 12px; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.strategy-coach-actions > div { gap: 6px; }
+.strategy-coach-actions .is-skip,
+.strategy-coach-actions .is-prev { background: transparent; color: #6e6e73; }
+.strategy-coach-actions .is-next { min-width: 58px; background: #0066cc; color: #fff; }
 
 .strategy-period,
 .strategy-plans,

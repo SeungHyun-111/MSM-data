@@ -58,6 +58,154 @@
   background: #000;
 }
 
+.nav-coach-trigger {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  margin-left: 8px;
+  padding: 0 11px 0 8px;
+  border: 1px solid #ffbdc7;
+  border-radius: 9px;
+  background: #fff5f6;
+  color: #d90b35;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.nav-coach-trigger:hover,
+.nav-coach-trigger:focus-visible {
+  border-color: #ed1745;
+  background: #ffecef;
+}
+
+.nav-coach-trigger-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  box-sizing: border-box;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.nav-coach-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.nav-coach-highlight {
+  position: fixed;
+  z-index: 1001;
+  box-sizing: border-box;
+  border: 2px solid #7db7ff;
+  border-radius: 9px;
+  box-shadow: 0 0 0 4px rgba(0, 102, 204, 0.22), 0 8px 28px rgba(0, 0, 0, 0.2);
+  background: transparent;
+  pointer-events: none;
+}
+
+.nav-link.is-coach-active,
+.settings-menu button.is-coach-active {
+  position: relative;
+  z-index: 1003;
+  border-radius: 7px;
+  background: #fff;
+  color: #1d1d1f;
+  font-weight: 800;
+}
+
+.settings-menu button.is-coach-active {
+  padding: 9px 12px;
+}
+
+.nav-coach-card {
+  position: fixed;
+  z-index: 1002;
+  width: min(320px, calc(100vw - 32px));
+  padding: 18px;
+  box-sizing: border-box;
+  transform: translateX(-50%);
+  border-radius: 16px;
+  background: #fff;
+  color: #1d1d1f;
+  box-shadow: 0 18px 54px rgba(0, 0, 0, 0.28);
+}
+
+.nav-coach-card::before {
+  content: '';
+  position: absolute;
+  top: -7px;
+  left: 50%;
+  width: 14px;
+  height: 14px;
+  transform: translateX(-50%) rotate(45deg);
+  background: #fff;
+}
+
+.nav-coach-progress,
+.nav-coach-actions,
+.nav-coach-actions > div {
+  display: flex;
+  align-items: center;
+}
+
+.nav-coach-progress,
+.nav-coach-actions {
+  justify-content: space-between;
+}
+
+.nav-coach-progress {
+  color: #6e6e73;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.nav-coach-card h2 {
+  margin: 14px 0 7px;
+  font-size: 18px;
+}
+
+.nav-coach-card p {
+  margin: 0 0 18px;
+  color: #515154;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.nav-coach-card button {
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.nav-coach-actions > div {
+  gap: 6px;
+}
+
+.nav-coach-skip,
+.nav-coach-prev {
+  background: transparent;
+  color: #6e6e73;
+}
+
+.nav-coach-next {
+  min-width: 58px;
+  background: #0066cc;
+  color: #fff;
+}
+
 .mega-menu {
   height: 0;
   overflow: hidden;
@@ -115,5 +263,13 @@
 
   .global-nav.is-menu-open .mega-menu {
     height: 108px;
+  }
+
+  .nav-coach-trigger {
+    margin-left: 0;
+  }
+
+  .nav-coach-card {
+    left: 50% !important;
   }
 }

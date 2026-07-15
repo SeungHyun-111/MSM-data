@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import './StrategyPage.css'
 import { openSectionWindow } from '../utils/openSectionWindow'
 
@@ -398,6 +399,9 @@ function openStrategyPdfWindow(month, strategyData, popupTarget, selectedTeamKey
 }
 
 export default function StrategyPage({ month, refreshVersion = 0, onChangeMonth }) {
+  const [helpStep, setHelpStep] = useState(-1)
+  const [helpTarget, setHelpTarget] = useState(null)
+  const detailOpenBeforeHelp = useRef(false)
   const year = Number(month.slice(0, 4))
   const monthNumber = Number(month.slice(4, 6))
   const nextMonth = addMonths(month, 1)
@@ -430,6 +434,61 @@ export default function StrategyPage({ month, refreshVersion = 0, onChangeMonth 
     })
   }, [detailSort, plans])
   const dailySummary = useMemo(() => buildDailySummary(plans), [plans])
+  const helpSteps = useMemo(() => [
+    { selector: '.strategy-period-selectors', title: '조회 조건', description: '조회할 연도, 월과 담당 조직을 선택합니다. 선택한 조건에 맞춰 전략과 편성 요청이 함께 변경됩니다.' },
+    { selector: '.strategy-text-layout-toggle', title: '본문 보기 방식', description: '화면에 맞춰 내용을 이어 보거나, 원문 줄바꿈을 유지해서 볼 수 있습니다.' },
+    { selector: '.strategy-plans .is-current', title: '당월 전략', description: '선택한 월의 핵심 편성 전략입니다. 영역을 우클릭하면 새 창에서 크게 볼 수 있습니다.' },
+    { selector: '.strategy-plans .is-next', title: '차월 전략', description: '다음 달에 이어서 추진할 전략입니다. 이 영역도 우클릭해 새 창으로 열 수 있습니다.' },
+    { selector: '.month-calendar', title: '월간 편성 캘린더', description: '날짜별 요청 건수와 가중분, 주요 프로그램을 달력 형태로 확인합니다.' },
+    { selector: '.request-details-toggle', title: '상세 요청 열기', description: '버튼을 누르면 해당 월의 전체 편성 요청을 표로 펼쳐 볼 수 있습니다.' },
+    { selector: '.request-detail-table-wrap', title: '상세 요청 목록', description: '요청일, 시간, MD분류, 편성코드와 예상 실적을 확인합니다. 제목으로 정렬하고 열 경계를 드래그해 너비를 조절할 수 있습니다.' },
+  ], [])
+
+  useLayoutEffect(() => {
+    if (helpStep < 0) return undefined
+    const step = helpSteps[helpStep]
+    if (step.selector === '.request-detail-table-wrap' && !isDetailOpen) {
+      setIsDetailOpen(true)
+      return undefined
+    }
+    const target = document.querySelector(step.selector)
+    if (!target) return undefined
+    target.scrollIntoView({ block: 'center', inline: 'nearest' })
+
+    const updateTarget = () => {
+      const rect = target.getBoundingClientRect()
+      const padding = 7
+      const left = Math.max(8, rect.left - padding)
+      const top = Math.max(52, rect.top - padding)
+      const right = Math.min(window.innerWidth - 8, rect.right + padding)
+      const bottom = Math.min(window.innerHeight - 8, rect.bottom + padding)
+      const cardWidth = Math.min(340, window.innerWidth - 32)
+      const cardLeft = Math.min(window.innerWidth - cardWidth / 2 - 16, Math.max(cardWidth / 2 + 16, (left + right) / 2))
+      const placeBelow = window.innerHeight - bottom >= 230
+      setHelpTarget({ left, top, width: Math.max(0, right - left), height: Math.max(0, bottom - top), cardLeft, cardTop: placeBelow ? bottom + 14 : Math.max(60, top - 14), placement: placeBelow ? 'below' : 'above' })
+    }
+
+    updateTarget()
+    const settleTimer = window.setTimeout(updateTarget, 120)
+    window.addEventListener('resize', updateTarget)
+    window.addEventListener('scroll', updateTarget, true)
+    return () => {
+      window.clearTimeout(settleTimer)
+      window.removeEventListener('resize', updateTarget)
+      window.removeEventListener('scroll', updateTarget, true)
+    }
+  }, [helpStep, helpSteps, isDetailOpen])
+
+  const startHelp = () => {
+    detailOpenBeforeHelp.current = isDetailOpen
+    setHelpStep(0)
+  }
+
+  const closeHelp = () => {
+    setIsDetailOpen(detailOpenBeforeHelp.current)
+    setHelpStep(-1)
+    setHelpTarget(null)
+  }
 
   const sortDetailPlans = (columnKey) => {
     setDetailSort((current) => ({
@@ -514,6 +573,10 @@ export default function StrategyPage({ month, refreshVersion = 0, onChangeMonth 
 
   return (
     <main className="strategy-page">
+      <button type="button" className="strategy-help-trigger" onClick={startHelp}>
+        <span aria-hidden="true">?</span>
+        도움말
+      </button>
       <section className="strategy-period" aria-label="전략 연월 및 조직 선택">
         <div>
           <p className="page-kicker"></p>
@@ -756,6 +819,28 @@ export default function StrategyPage({ month, refreshVersion = 0, onChangeMonth 
           </div>
         )}
       </section>
+      {helpStep >= 0 && helpTarget && createPortal(
+        <div className="strategy-coach" role="dialog" aria-modal="true" aria-label="월간 편성 전략 사용 안내">
+          <div className="strategy-coach-shade is-top" style={{ height: helpTarget.top }} />
+          <div className="strategy-coach-shade is-left" style={{ top: helpTarget.top, width: helpTarget.left, height: helpTarget.height }} />
+          <div className="strategy-coach-shade is-right" style={{ top: helpTarget.top, left: helpTarget.left + helpTarget.width, height: helpTarget.height }} />
+          <div className="strategy-coach-shade is-bottom" style={{ top: helpTarget.top + helpTarget.height }} />
+          <div className="strategy-coach-outline" style={{ left: helpTarget.left, top: helpTarget.top, width: helpTarget.width, height: helpTarget.height }} />
+          <section className={`strategy-coach-card is-${helpTarget.placement}`} style={{ left: helpTarget.cardLeft, top: helpTarget.cardTop }}>
+            <div className="strategy-coach-progress"><span>월간 편성 전략 안내</span><span>{helpStep + 1} / {helpSteps.length}</span></div>
+            <h2>{helpSteps[helpStep].title}</h2>
+            <p>{helpSteps[helpStep].description}</p>
+            <div className="strategy-coach-actions">
+              <button type="button" className="is-skip" onClick={closeHelp}>건너뛰기</button>
+              <div>
+                {helpStep > 0 && <button type="button" className="is-prev" onClick={() => setHelpStep((step) => step - 1)}>이전</button>}
+                <button type="button" className="is-next" onClick={() => helpStep === helpSteps.length - 1 ? closeHelp() : setHelpStep((step) => step + 1)}>{helpStep === helpSteps.length - 1 ? '완료' : '다음'}</button>
+              </div>
+            </div>
+          </section>
+        </div>,
+        document.body,
+      )}
     </main>
   )
 }

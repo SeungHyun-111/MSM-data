@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import './Dashboard.css'
 import { openSectionWindow } from '../utils/openSectionWindow'
@@ -369,6 +369,9 @@ function getTooltipPosition(x, y) {
 const emptyStats = { pgmCount: 0, weight: 0, revenue: 0 }
 
 export default function Dashboard({ month, data, onChangeMonth }) {
+  const [helpStep, setHelpStep] = useState(-1)
+  const [helpTarget, setHelpTarget] = useState(null)
+  const categoryBeforeHelp = useRef(null)
   const [cachedViewState] = useState(readCachedViewState)
   const [rawData, setRawData] = useState(data)
   const [previousData, setPreviousData] = useState(null)
@@ -508,6 +511,82 @@ export default function Dashboard({ month, data, onChangeMonth }) {
     [analysis],
   )
   const showBrandDetail = visibleMdCategory !== 'ALL'
+  const helpSteps = useMemo(() => {
+    const steps = [
+      { selector: '.selector-sheet', title: '조회 조건', description: '조회할 연도, 월, MD분류를 선택합니다. MD분류를 선택하면 아래에서 브랜드별 상세 편성을 확인할 수 있습니다.' },
+      { selector: '.brand-rank', title: '브랜드 순위', description: '선택한 조건에서 회사별 운영 브랜드 수와 순위를 빠르게 비교합니다.' },
+      { selector: '.company-card', title: '회사별 편성 현황', description: '회사별 편성 비중, 취급고, 방송시간과 브랜드 현황을 한 카드에서 비교합니다.' },
+      { selector: '.company-card .share-progress', title: '편성 비중', description: '막대에 마우스를 올리면 MD분류별 편성 비중을 확인할 수 있습니다. 전월대비 버튼에서는 증감도 볼 수 있습니다.' },
+    ]
+
+    if (showBrandDetail) {
+      steps.push(
+        { selector: '.brand-table-wrap', title: '브랜드 선택', description: '브랜드 행을 클릭하면 아래에 채널별 방송 상세가 표시됩니다. Ctrl 키를 누른 채 클릭하면 여러 브랜드를 함께 선택할 수 있습니다.' },
+        { selector: '.broadcast-section', title: '방송 상세', description: '선택한 브랜드의 채널별 방송 내역입니다. 제목을 눌러 정렬하고 열 경계를 드래그해 너비를 조절할 수 있습니다.' },
+      )
+    }
+    return steps
+  }, [showBrandDetail])
+
+  useLayoutEffect(() => {
+    if (helpStep < 0) return undefined
+    const step = helpSteps[helpStep]
+    const target = step && document.querySelector(step.selector)
+    if (!target) {
+      setHelpStep(-1)
+      return undefined
+    }
+
+    target.scrollIntoView({ block: 'center', inline: 'nearest' })
+    const updateTarget = () => {
+      const rect = target.getBoundingClientRect()
+      const padding = 7
+      const left = Math.max(8, rect.left - padding)
+      const top = Math.max(52, rect.top - padding)
+      const right = Math.min(window.innerWidth - 8, rect.right + padding)
+      const bottom = Math.min(window.innerHeight - 8, rect.bottom + padding)
+      const cardWidth = Math.min(340, window.innerWidth - 32)
+      const cardLeft = Math.min(
+        window.innerWidth - cardWidth / 2 - 16,
+        Math.max(cardWidth / 2 + 16, (left + right) / 2),
+      )
+      const placeBelow = window.innerHeight - bottom >= 230
+      setHelpTarget({
+        left,
+        top,
+        width: Math.max(0, right - left),
+        height: Math.max(0, bottom - top),
+        cardLeft,
+        cardTop: placeBelow ? bottom + 14 : Math.max(60, top - 14),
+        placement: placeBelow ? 'below' : 'above',
+      })
+    }
+
+    updateTarget()
+    const settleTimer = window.setTimeout(updateTarget, 120)
+    window.addEventListener('resize', updateTarget)
+    window.addEventListener('scroll', updateTarget, true)
+    return () => {
+      window.clearTimeout(settleTimer)
+      window.removeEventListener('resize', updateTarget)
+      window.removeEventListener('scroll', updateTarget, true)
+    }
+  }, [helpStep, helpSteps])
+
+  const closeHelp = () => {
+    if (categoryBeforeHelp.current !== null) {
+      setMdCategory(categoryBeforeHelp.current)
+      categoryBeforeHelp.current = null
+    }
+    setHelpStep(-1)
+    setHelpTarget(null)
+  }
+
+  const startHelp = () => {
+    categoryBeforeHelp.current = mdCategory
+    setMdCategory('레포츠')
+    setHelpStep(0)
+  }
   const activeSelectedBrands = selectedBrands.filter(
     (item) => item?.month === month && item?.mdCategory === visibleMdCategory,
   )
@@ -637,6 +716,10 @@ export default function Dashboard({ month, data, onChangeMonth }) {
 
   return (
     <main className="dashboard">
+      <button type="button" className="dashboard-help-trigger" onClick={startHelp}>
+        <span aria-hidden="true">?</span>
+        도움말
+      </button>
       <section className="sheet-top">
         <div className="selector-sheet" aria-label="월 MD분류 선택">
           <div className="selector-values">
@@ -966,6 +1049,37 @@ export default function Dashboard({ month, data, onChangeMonth }) {
         </section>
       )}
 
+      {helpStep >= 0 && helpTarget && createPortal(
+        <div className="dashboard-coach" role="dialog" aria-modal="true" aria-label="경쟁사 편성 사용 안내">
+          <div className="dashboard-coach-shade is-top" style={{ height: helpTarget.top }} />
+          <div className="dashboard-coach-shade is-left" style={{ top: helpTarget.top, width: helpTarget.left, height: helpTarget.height }} />
+          <div className="dashboard-coach-shade is-right" style={{ top: helpTarget.top, left: helpTarget.left + helpTarget.width, height: helpTarget.height }} />
+          <div className="dashboard-coach-shade is-bottom" style={{ top: helpTarget.top + helpTarget.height }} />
+          <div className="dashboard-coach-outline" style={{ left: helpTarget.left, top: helpTarget.top, width: helpTarget.width, height: helpTarget.height }} />
+          <section
+            className={`dashboard-coach-card is-${helpTarget.placement}`}
+            style={{ left: helpTarget.cardLeft, top: helpTarget.cardTop }}
+          >
+            <div className="dashboard-coach-progress"><span>경쟁사 편성 안내</span><span>{helpStep + 1} / {helpSteps.length}</span></div>
+            <h2>{helpSteps[helpStep].title}</h2>
+            <p>{helpSteps[helpStep].description}</p>
+            <div className="dashboard-coach-actions">
+              <button type="button" className="is-skip" onClick={closeHelp}>건너뛰기</button>
+              <div>
+                {helpStep > 0 && <button type="button" className="is-prev" onClick={() => setHelpStep((step) => step - 1)}>이전</button>}
+                <button
+                  type="button"
+                  className="is-next"
+                  onClick={() => helpStep === helpSteps.length - 1 ? closeHelp() : setHelpStep((step) => step + 1)}
+                >
+                  {helpStep === helpSteps.length - 1 ? '완료' : '다음'}
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>,
+        document.body,
+      )}
       {tooltipElement}
     </main>
   )
