@@ -1,5 +1,6 @@
-const SEARCH_INDEX_VERSION = 1
-const MIN_GRAM_LENGTH = 2
+const SEARCH_INDEX_VERSION = 2
+const MIN_GRAM_LENGTH = 1
+const MAX_GRAM_LENGTH = 2
 
 function normalizeSearchText(value) {
   return String(value || '')
@@ -27,8 +28,11 @@ function getGrams(value) {
   if (characters.length < MIN_GRAM_LENGTH) return []
 
   const grams = new Set()
-  for (let index = 0; index <= characters.length - MIN_GRAM_LENGTH; index += 1) {
-    grams.add(characters.slice(index, index + MIN_GRAM_LENGTH).join(''))
+  const maxLength = Math.min(MAX_GRAM_LENGTH, characters.length)
+  for (let length = MIN_GRAM_LENGTH; length <= maxLength; length += 1) {
+    for (let index = 0; index <= characters.length - length; index += 1) {
+      grams.add(characters.slice(index, index + length).join(''))
+    }
   }
   return [...grams]
 }
@@ -63,6 +67,7 @@ export function buildCompetitorSearchIndex(payload) {
     month: payload?.month,
     updatedAt: payload?.updatedAt,
     minGramLength: MIN_GRAM_LENGTH,
+    maxGramLength: MAX_GRAM_LENGTH,
     documentCount,
     grams: {
       brand,
@@ -70,4 +75,3 @@ export function buildCompetitorSearchIndex(payload) {
     },
   }
 }
-
