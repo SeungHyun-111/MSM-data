@@ -6,11 +6,13 @@ import RefreshCompetitorModal from './components/RefreshCompetitorModal'
 import Dashboard from './pages/Dashboard'
 import MainPage from './pages/MainPage'
 import StrategyPage from './pages/StrategyPage'
+import { buildCompetitorSearchIndex } from './utils/competitorSearchIndex'
 
 const COMPETITOR_REFRESH_URL = 'https://script.google.com/macros/s/AKfycbzE147wQl7Qiz59QEB-vxEppregg32FbZRCqSHqmaK8_8OiMpPnu-S_znUeyORt59gd/exec'
 const STRATEGY_REFRESH_URL = 'https://script.google.com/macros/s/AKfycbxIm3HscMzbuKlWtWA6f5u18fJEhrhTqsl5T4Tl43BLMOETTUTqaZ7pI1L6yS43gThn-Q/exec'
 const FIREBASE_BASE_URL = 'https://schedule-7ec7a-default-rtdb.asia-southeast1.firebasedatabase.app'
 const FIREBASE_MSM_PATH = 'competitorInfo/monthly'
+const FIREBASE_COMPETITOR_SEARCH_PATH = 'competitorInfo/searchIndex'
 const FIREBASE_STRATEGY_PATH = 'monthlyStrategy'
 const FIREBASE_METADATA_PATH = 'metadata'
 const APP_STATE_CACHE_KEY = 'msm:app-state'
@@ -134,6 +136,7 @@ async function putJson(path, payload) {
 
 async function saveCompetitorPayloadToFirebase(ym, payload) {
   await putJson(`${FIREBASE_MSM_PATH}/${ym}`, payload)
+  await putJson(`${FIREBASE_COMPETITOR_SEARCH_PATH}/${ym}`, buildCompetitorSearchIndex(payload))
   try {
     await putJson(`${FIREBASE_METADATA_PATH}/${FIREBASE_MSM_PATH}/${ym}`, buildCompetitorMetadata(payload))
   } catch (error) {
