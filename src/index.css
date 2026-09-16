@@ -53,6 +53,79 @@ body {
   transform: translateY(82px);
 }
 
+.app-footer {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  box-sizing: border-box;
+  width: min(1180px, calc(100% - 48px));
+  margin: 56px auto 0;
+  padding: 24px 0 32px;
+  border-top: 1px solid var(--border);
+  color: #86868b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.app-footer > div {
+  display: grid;
+  gap: 4px;
+}
+
+.app-footer-label {
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.app-footer strong {
+  color: var(--text-h);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.app-footer ul {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px 12px;
+  max-width: 760px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.app-footer li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.app-footer code {
+  padding: 2px 6px;
+  font-size: 12px;
+  background: #fff;
+  border: 1px solid var(--border);
+}
+
+@media (max-width: 760px) {
+  .app-footer {
+    width: calc(100% - 32px);
+    flex-direction: column;
+    gap: 16px;
+    margin-top: 36px;
+  }
+
+  .app-footer ul {
+    justify-content: flex-start;
+  }
+
+  .app-footer li {
+    white-space: normal;
+  }
+}
+
 h1,
 h2 {
   font-family: var(--heading);

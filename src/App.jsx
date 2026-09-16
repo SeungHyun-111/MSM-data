@@ -16,6 +16,13 @@ const FIREBASE_COMPETITOR_SEARCH_PATH = 'competitorInfo/searchIndex'
 const FIREBASE_STRATEGY_PATH = 'monthlyStrategy'
 const FIREBASE_METADATA_PATH = 'metadata'
 const APP_STATE_CACHE_KEY = 'msm:app-state'
+const RTDB_PROJECT_NAME = 'schedule-7ec7a'
+const RTDB_FEATURES = [
+  { label: '경쟁사 분석 월별 원본', path: FIREBASE_MSM_PATH },
+  { label: '경쟁사 검색 인덱스', path: FIREBASE_COMPETITOR_SEARCH_PATH },
+  { label: '월간 편성 전략', path: FIREBASE_STRATEGY_PATH },
+  { label: 'DB 현황 메타데이터', path: FIREBASE_METADATA_PATH },
+]
 
 function getCurrentMonth() {
   const now = new Date()
@@ -390,6 +397,20 @@ export default function App() {
           />
         )}
       </div>
+      <footer className="app-footer" aria-label="RTDB information">
+        <div>
+          <span className="app-footer-label">Firebase RTDB</span>
+          <strong>{RTDB_PROJECT_NAME}</strong>
+        </div>
+        <ul>
+          {RTDB_FEATURES.map((feature) => (
+            <li key={feature.path}>
+              <span>{feature.label}</span>
+              <code>{feature.path}</code>
+            </li>
+          ))}
+        </ul>
+      </footer>
       {isRefreshModalOpen && (
         <RefreshCompetitorModal
           defaultMonth={refreshMode === 'strategy' ? strategyMonth : competitorMonth}
